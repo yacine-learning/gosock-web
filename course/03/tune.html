@@ -1,0 +1,43 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li><code>setsockopt(fd, level, option, value)</code> changes one setting of a live socket; <code>getsockopt</code> reads it back.</li>
+<li><code>SO_RCVBUF</code> sets the receive buffer size, so the window this socket can advertise. Set it before <code>listen</code> (or <code>connect</code>): accepted sockets inherit it.</li>
+<li>Linux <b>doubles</b> the value you give: half for data, half for its own bookkeeping. <code>getsockopt</code> shows the doubled number.</li>
+</ul></div>
+
+<g-anim scene="socket-lifecycle"></g-anim>
+
+<details class="fold more"><summary>Options you will meet</summary>
+<table>
+<tr><th>Level, option</th><th>Effect</th></tr>
+<tr><td><code>SOL_SOCKET, SO_RCVBUF / SO_SNDBUF</code></td><td>buffer sizes (normally tuned automatically by Linux; setting one turns that off)</td></tr>
+<tr><td><code>SOL_SOCKET, SO_REUSEADDR</code></td><td>bind a listening port that old TIME_WAIT connections still hold</td></tr>
+<tr><td><code>SOL_SOCKET, SO_KEEPALIVE</code></td><td>probe an idle connection to detect a dead peer</td></tr>
+<tr><td><code>IPPROTO_TCP, TCP_NODELAY</code></td><td>send small writes at once (turns Nagle's algorithm off)</td></tr>
+</table>
+<p>In Go, <code>conn.(*net.TCPConn).SetReadBuffer(n)</code> is <code>setsockopt(SO_RCVBUF)</code>, and <code>net.ListenConfig{Control: …}</code> lets you call <code>setsockopt</code> on a listener before <code>listen</code>.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<g-predict id="rcvbuf" correct="b">
+  <g-q><code>tinyrecv</code> asks for a 4096-byte receive buffer with <code>setsockopt</code>, then reads it back with <code>getsockopt</code>. What does it read?</g-q>
+  <g-o k="a">4096</g-o><g-o k="b">8192</g-o><g-o k="c">131072, the default: the request is ignored.</g-o><g-o k="d">An error: 4096 is too small.</g-o>
+  <g-why><p>Linux stores twice the request, to leave room for its own per-packet bookkeeping, and reports what it stored.</p></g-why>
+</g-predict>
+<g-example project="tinyrecv"><p><code>tinyrecv</code> sets <code>SO_RCVBUF</code> before <code>listen</code>, then reads slowly. Build it, set <b>Wire</b> to <b>slow</b>, and start it in the background on B:</p></g-example>
+<g-cmd m="B">
+$ tinyrecv 4096 &
+</g-cmd>
+<p>Send the big file, and look at the sender's socket while it goes:</p>
+<g-cmd m="A">
+$ nc -N $B_IP 9000 < /tmp/big.bin &
+$ ss -tnmi
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>B printed "asked for a 4096-byte receive buffer, the kernel gives 8192".</li>
+<li>During the big transfer, B's receive buffer bar is 8 KB, and on A <code>snd_wnd</code> stays at 8192 or below: B's small buffer limits how much A may send.</li>
+</ul>
+</div>

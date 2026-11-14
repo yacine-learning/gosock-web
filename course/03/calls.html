@@ -1,0 +1,50 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>A server is four calls: <code>socket</code> (a descriptor for a new, empty socket), <code>bind</code> (an address and port), <code>listen</code> (accept connections, with a queue), <code>accept</code> (wait for one, get a <b>new</b> descriptor).</li>
+<li>A client is two: <code>socket</code>, then <code>connect</code>, which does the handshake and returns once it is done.</li>
+<li><code>net.Listen</code> and <code>net.Dial</code> are these calls, plus a few options.</li>
+</ul></div>
+
+<g-anim scene="socket-lifecycle"></g-anim>
+
+<details class="fold more"><summary>What each call gives the kernel</summary>
+<p><code>socket(AF_INET, SOCK_STREAM, 0)</code>: IPv4, a byte stream, the default protocol for that (TCP). The socket has no address yet. <code>bind</code> gives it one; a client usually skips it and the kernel picks a free "ephemeral" port at <code>connect</code>. <code>listen</code> turns the socket into a listening one: from then on the kernel completes handshakes for it, alone. <code>accept</code> takes one finished connection from the queue.</p>
+<p>The listening socket never carries data. Each accepted connection is a separate socket, with its own descriptor, buffers and state.</p>
+</details>
+<details class="fold kc"><summary>Two objects per socket, in simplified kernel C</summary>
+<g-go file="kernel (simplified).c">
+struct socket {                  // what the file descriptor reaches (via struct file)
+    socket_state     state;      // SS_UNCONNECTED, SS_CONNECTED...
+    struct file     *file;
+    struct sock     *sk;         // the protocol's side
+    const struct proto_ops *ops; // inet_stream_ops: bind, listen, accept, connect...
+};
+
+struct sock {                    // the network side (struct tcp_sock for TCP)
+    unsigned char    skc_state;  // TCP_LISTEN, TCP_ESTABLISHED, TCP_TIME_WAIT...
+    __be32           skc_rcv_saddr; __u16 skc_num;      // local address and port
+    __be32           skc_daddr;      __be16 skc_dport;   // remote address and port
+    struct sk_buff_head sk_receive_queue, sk_write_queue; // the buffers
+    int              sk_rcvbuf, sk_sndbuf;               // their sizes
+    struct request_sock_queue icsk_accept_queue;         // listening: finished connections
+};
+</g-go>
+</details>
+
+<h2 class="run">Run this</h2>
+<p>Trace only the network calls (<code>-e trace=network</code>) of your module 1 receiver, then send it a small file:</p>
+<g-cmd m="B">
+$ strace -e trace=network gosock recv :9000 got.txt
+</g-cmd>
+<g-cmd m="A">
+$ strace -e trace=network gosock send $B_IP:9000 /tmp/hello.txt
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>On B: <code>socket</code> = 3, <code>bind</code>, <code>listen</code>, then <code>accept(3, …)</code> waits, and returns <b>4</b>.</li>
+<li>On A: <code>socket</code> = 4 (3 is the file), <code>connect</code>, and no <code>bind</code>: <code>getsockname</code> shows the port the kernel chose.</li>
+<li>Go also called <code>setsockopt</code>: <code>SO_REUSEADDR</code> on the listener, <code>TCP_NODELAY</code> on the connection.</li>
+</ul>
+</div>

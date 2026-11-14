@@ -1,0 +1,43 @@
+<g-callout type="goal"><p>Write <code>rawrecv</code>: your module 1 receiver, made of socket system calls instead of <code>net.Listen</code> and <code>Accept</code>.</p></g-callout>
+
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>The calls, in order: <code>Socket</code>, <code>SetsockoptInt(SO_REUSEADDR)</code>, <code>Bind</code>, <code>Listen</code>, <code>Accept</code>, then the read loop of <code>rawcopy</code>.</li>
+<li>An address is a struct: <code>&amp;syscall.SockaddrInet4{Port: 9000}</code>; no <code>Addr</code> means 0.0.0.0, every address of the machine.</li>
+<li>Two descriptors to close: the listening socket and the connection.</li>
+</ul></div>
+
+<h2>The spec</h2>
+<table>
+<tr><th>Command</th><th>Behaviour</th></tr>
+<tr><td><code>rawrecv PORT DEST</code></td><td>Listen on <code>PORT</code>, accept <b>one</b> connection, store every byte in <code>DEST</code>, print <code>received N bytes</code>, exit with status 0.</td></tr>
+<tr><td>Errors</td><td>Returned; <code>main</code> prints <code>rawrecv: …</code> and exits with status 1.</td></tr>
+<tr><td>Rule</td><td>No package <code>net</code>, <code>os.Open</code>/<code>Create</code> or <code>io.Copy</code>: system calls only. The port must be usable at once after an earlier connection on it, even one still in TIME_WAIT.</td></tr>
+</table>
+
+<details class="fold more"><summary>Why SO_REUSEADDR</summary>
+<p>A connection ends in TIME_WAIT on the side that closed first, for 60 seconds, and keeps its port during that time. Without <code>SO_REUSEADDR</code>, <code>bind</code> on that port fails with <code>EADDRINUSE</code> until the minute is over. With it, a listening socket may bind next to old TIME_WAIT connections. Go sets it on every listener, which is why <code>gosock recv</code> never met the problem.</p>
+</details>
+
+<g-lab id="rawrecv"></g-lab>
+
+<h2 class="run">Run this</h2>
+<g-cmd m="B">
+$ rawrecv 9000 big.copy
+</g-cmd>
+<g-cmd m="A">
+$ gosock send $B_IP:9000 /tmp/big.bin
+</g-cmd>
+<g-cmd m="B">
+$ sha256sum big.copy
+$ strace -e trace=network rawrecv 9000 x.bin
+</g-cmd>
+<p>(The last command waits: send it something from A, or press Ctrl+C.)</p>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>The same fingerprint as the original: the receiver is yours down to the system calls.</li>
+<li>The trace is your code: <code>socket</code>, <code>setsockopt</code>, <code>bind</code>, <code>listen(3, 8)</code>, <code>accept</code>.</li>
+</ul>
+</div>

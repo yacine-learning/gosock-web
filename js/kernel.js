@@ -487,7 +487,11 @@ export class Machine {
   }
   portBusy(port, s) {
     const set = this.bound.get(port); if (!set || !set.size) return false;
-    for (const o of set) if (o.state === 'LISTEN' || !s.opts.reuseaddr || !o.opts.reuseaddr) return true;
+    for (const o of set) {
+      if (o.state === 'LISTEN') return true;
+      if (o.state === 'TIME_WAIT') { if (!s.opts.reuseaddr) return true; continue; }   // SO_REUSEADDR on the new socket is enough
+      if (!s.opts.reuseaddr || !o.opts.reuseaddr) return true;
+    }
     return false;
   }
   bindSock(s, ip, port) {

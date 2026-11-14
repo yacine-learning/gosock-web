@@ -1,0 +1,45 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>After <code>listen</code>, the <b>kernel</b> completes handshakes by itself. A finished connection waits in the listening socket's <b>accept queue</b> until the program calls <code>accept</code>.</li>
+<li>The <g-t k="backlog">backlog</g-t> (<code>listen</code>'s second argument) bounds that queue; Linux keeps up to backlog + 1.</li>
+<li>When it is full, new SYNs are dropped: the client's <code>connect</code> waits and retries, and may time out.</li>
+</ul></div>
+
+<g-anim scene="accept-queue"></g-anim>
+
+<details class="fold more"><summary>Why a queue, and what ss shows</summary>
+<p>The queue absorbs bursts: clients that arrive while the program handles another connection are not refused. For a listening socket, <code>ss -tln</code> uses its two columns differently: <b>Recv-Q</b> is the number of connections waiting in the accept queue, <b>Send-Q</b> the backlog.</p>
+<p>A queued connection is complete for the client: <code>connect</code> returned, and the client can even send data, which waits in the new socket's receive buffer. If the listener is closed, the kernel resets every queued connection.</p>
+<p>The kernel caps the backlog at <code>/proc/sys/net/core/somaxconn</code> (4096). Go asks for that maximum.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<g-example project="lazy"><p><code>lazy</code> listens on port 9000 with a backlog of 2 and never calls <code>accept</code>. Build it and start it on B, in the background (<code>&amp;</code>):</p></g-example>
+<g-cmd m="B">
+$ lazy &
+</g-cmd>
+<p>Four clients from A, in the background too, then a look at their sockets:</p>
+<g-cmd m="A">
+$ nc $B_IP 9000 < /tmp/hello.txt &
+$ nc $B_IP 9000 < /tmp/hello.txt &
+$ nc $B_IP 9000 < /tmp/hello.txt &
+$ nc $B_IP 9000 < /tmp/hello.txt &
+$ ss -tan
+</g-cmd>
+<p>The listener's queue, then the end of <code>lazy</code>:</p>
+<g-cmd m="B">
+$ ss -tln
+$ pkill lazy
+</g-cmd>
+<g-cmd m="A">
+$ ss -tan
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>On A, three connections are <b>ESTAB</b> although nobody accepted them; the fourth is stuck in <b>SYN-SENT</b>.</li>
+<li>B's kernel view shows the accept queue: 3 waiting, each with 21 bytes in its receive buffer.</li>
+<li><code>ss -tln</code> on B: Recv-Q 3, Send-Q 2. When <code>lazy</code> died, the three queued connections were reset (<code>nc</code> printed "Connection reset by peer"), and the fourth was refused.</li>
+</ul>
+</div>

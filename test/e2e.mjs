@@ -207,6 +207,107 @@ test('pages "offsets", "cache", "dirty", "leak": shared offsets, the page cache,
   assert.equal((await sh('A', 'grep -c openat leak.trace')).trim(), '1022');
   assert.match(await sh('A', 'grep EMFILE leak.trace'), /^openat\(AT_FDCWD, "\/etc\/hostname", O_RDONLY\|O_CLOEXEC\) = -1 EMFILE \(Too many open files\)/);
 });
+// ── module 3 ──
+const rawrecvSol = fs.readFileSync('course/03/rawrecv.solution.go', 'utf8');
+const quizPass = async (id, answers) => {
+  await open('#/p/' + id); const q = page.locator('g-quiz'); await q.locator('[data-a="start"]').click();
+  for (const k of answers) { await q.locator(`.pr-opt[data-k="${k}"]`).click(); await q.locator('[data-a="next"]').click(); }
+  assert.match(await q.innerText(), new RegExp(`${answers.length} / ${answers.length}\\s+Pass`));
+};
+test('module 3: the check passes with the right answers; page "calls" traced on both sides', async () => {
+  await quizPass('check3', ['c', 'a', 'd', 'b', 'c', 'a', 'd', 'b']);
+  await open('#/p/calls'); await buildProject('gosock', solution);
+  await page.locator('.cmd-run').nth(0).click(); await page.waitForTimeout(500);
+  await page.locator('.cmd-run').nth(1).click(); await idle('A'); await idle('B');
+  const b = await out('B'), a = await out('A'); console.log(b.split('\n').slice(-12).join('\n')); console.log(a.split('\n').slice(-12).join('\n'));
+  assert.match(b, /socket\(AF_INET, SOCK_STREAM, IPPROTO_TCP\) = 3\nsetsockopt\(3, SOL_SOCKET, SO_REUSEADDR, \[1\], 4\) = 0\nbind\(3, .*sin_port=htons\(9000\).*\) = 0\nlisten\(3, \d+\) = 0\n/);
+  assert.match(b, /accept\(3, \{sa_family=AF_INET, sin_port=htons\(\d+\), sin_addr=inet_addr\("10\.0\.0\.1"\)\}, \[16\]\) = 4/);
+  assert.match(a, /socket\(AF_INET, SOCK_STREAM, IPPROTO_TCP\) = 4\nconnect\(4, .*sin_port=htons\(9000\).*10\.0\.0\.2.*\) = 0/); assert.match(a, /getsockname\(4, /); assert.match(a, /TCP_NODELAY/);
+  assert.doesNotMatch(a, /bind\(/);
+});
+test('lab rawrecv: the starting code fails, the solution passes, the page commands work', async () => {
+  await open('#/p/rawrecv');
+  let r = await checks('rawrecv'); assert.equal(r.passed, false);
+  for (const k of 'ABCEG') assert.equal(r.res[k].state, 'fail', 'starter, check ' + k);
+  await setCode(rawrecvSol); r = await checks('rawrecv');
+  assert.deepEqual(Object.entries(r.res).filter(([, v]) => v.state !== 'pass'), []); assert.ok(r.passed);
+  await buildProject('gosock', solution); await open('#/p/rawrecv'); await buildProject('rawrecv', rawrecvSol);
+  await page.locator('.cmd-run').nth(0).click(); await page.waitForTimeout(400);
+  await page.locator('.cmd-run').nth(1).click(); await idle('A'); await idle('B');
+  await page.locator('.cmd-run').nth(2).click(); await idle('B');
+  assert.match(await out('B'), new RegExp('received 2097152 bytes[\\s\\S]*' + SHA + '  big.copy'));
+});
+const mutRR = (from, to) => { assert.ok(rawrecvSol.includes(from), 'mutation anchor: ' + from); return rawrecvSol.replace(from, to); };
+const MUT3 = [
+  ['rawrecv without SO_REUSEADDR', mutRR('\tif err := syscall.SetsockoptInt(ls, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1); err != nil {\n\t\treturn 0, fmt.Errorf("setsockopt: %w", err)\n\t}\n', ''), /E/],
+  ['rawrecv ignores the bind error', mutRR('\tif err := syscall.Bind(ls, &syscall.SockaddrInet4{Port: port}); err != nil {\n\t\treturn 0, fmt.Errorf("bind: %w", err)\n\t}', '\tsyscall.Bind(ls, &syscall.SockaddrInet4{Port: port})'), /F/],
+  ['rawrecv reads only once', mutRR('\t\tif n == 0 {\n\t\t\treturn total, nil\n\t\t}\n\t\tif err := writeAll(out, buf[:n]); err != nil {\n\t\t\treturn total, fmt.Errorf("write %s: %w", dest, err)\n\t\t}\n\t\ttotal += n', '\t\tif err := writeAll(out, buf[:n]); err != nil {\n\t\t\treturn total, fmt.Errorf("write %s: %w", dest, err)\n\t\t}\n\t\treturn total + n, nil'), /B/],
+];
+for (const [name, src, expect] of MUT3) test(`mutation caught: ${name}`, async () => {
+  await open('#/p/rawrecv'); await setCode(src);
+  const r = await checks('rawrecv'); assert.equal(r.passed, false);
+  const failed = Object.entries(r.res).filter(([, v]) => v.state === 'fail').map(([k, v]) => k + ': ' + v.msg);
+  assert.match(failed.map((f) => f[0]).join(''), expect, failed.join('\n')); console.log('      ' + failed.find((f) => expect.test(f[0])).slice(0, 170));
+});
+test('page "queue": three connections wait in the accept queue, the fourth retries; the end resets them', async () => {
+  await open('#/p/queue'); await buildProject('lazy');
+  await page.locator('.tab[data-tab="machines"]').click();
+  const click = async (n) => { await page.locator('.cmd-run').nth(n).click(); };
+  await click(0); await page.waitForTimeout(500);
+  for (let n = 1; n <= 4; n++) { await click(n); await idle('A'); await page.waitForTimeout(80); }
+  await page.waitForTimeout(300); await click(5); await idle('A');
+  const a = await out('A'); console.log(a.split('\n').slice(-8).join('\n'));
+  assert.equal((a.match(/ESTAB\s+0\s+0\s+10\.0\.0\.1:\d+\s+10\.0\.0\.2:9000/g) || []).length, 3, 'three ESTAB'); assert.match(a, /SYN-SENT\s+0\s+0\s+10\.0\.0\.1:\d+\s+10\.0\.0\.2:9000/);
+  const kv = await page.locator('#kview').innerText(); assert.match(kv, /3 waiting/);
+  await shot('queue-kview');
+  await click(6); await idle('B'); assert.match(await out('B'), /LISTEN\s+3\s+2\s+0\.0\.0\.0:9000/);
+  await click(7); await idle('B'); await page.waitForTimeout(400);
+  assert.equal((( await out('A')).match(/Connection reset by peer/g) || []).length, 3);
+  await click(8); await idle('A');
+});
+test('pages "inside", "tune": ss -tnoemi during a transfer; a doubled SO_RCVBUF limits the window', async () => {
+  await open('#/p/inside'); await buildProject('gosock', solution);
+  await page.locator('.tab[data-tab="machines"]').click(); await page.locator('#speed [data-s="150"]').click();
+  for (let n = 0; n < 2; n++) { await page.locator('.cmd-run').nth(n).click(); await page.waitForTimeout(300); }
+  await page.waitForTimeout(2500);
+  await page.locator('.cmd-run').nth(2).click(); await idle('A'); await page.locator('.cmd-run').nth(3).click(); await idle('B');
+  const a = await out('A'), b = await out('B'); console.log(a.split('\n').slice(-4).join('\n')); console.log(b.split('\n').slice(-4).join('\n'));
+  assert.match(a, /ESTAB\s+0\s+[1-9]\d*\s+10\.0\.0\.1:\d+\s+10\.0\.0\.2:9000\s+(timer:\(\S+\) )?ino:\d+ sk:\w+ <->\n\tskmem:\(r0,rb131072,t\d+,tb87040,/);
+  assert.match(a, /bytes_sent:\d+ bytes_acked:\d+ bytes_received:0 segs_out:\d+ segs_in:\d+ snd_wnd:\d+ rcv_wnd:\d+/);
+  assert.match(b, /bytes_sent:0 bytes_acked:0 bytes_received:[1-9]\d*/);
+  await page.locator('#speed [data-s="0"]').click(); await idle('A', 30000); await page.waitForTimeout(500);
+  await open('#/p/tune'); await buildProject('tinyrecv');
+  await page.locator('.tab[data-tab="machines"]').click(); await page.locator('#speed [data-s="4"]').click();
+  await page.locator('.pr-opt[data-k="b"]').click();
+  await page.locator('.cmd-run').nth(0).click(); await page.waitForTimeout(500); assert.match(await out('B'), /asked for a 4096-byte receive buffer, the kernel gives 8192/);
+  await page.locator('.cmd-run').nth(1).click(); await idle('A'); await page.waitForTimeout(800);
+  await page.locator('.cmd-run').nth(2).click(); await idle('A');
+  const t = await out('A'); console.log(t.split('\n').slice(-3).join('\n'));
+  const wnd = +/snd_wnd:(\d+)/.exec(t.split('ss -tnmi').pop())[1]; assert.ok(wnd <= 8192, 'snd_wnd ' + wnd);
+  const kv = await page.locator('#kview').innerText(); assert.match(kv, /receive buffer\s+[\d.]+ (KB|B) \/ 8 KB/);
+  await shot('tune-kview');
+  await page.locator('#speed [data-s="0"]').click();
+  await page.waitForFunction(() => ![...window.gosock.S.sim.b.procs.values()].some((p) => p.comm === 'tinyrecv'), null, { timeout: 60000 });
+  assert.match((await out('B')).split('tinyrecv 4096 &').pop(), /received 2097152 bytes/);
+});
+test('pages "close", "reuse": tcpdump of a whole connection, TIME_WAIT on the side that closed first, EADDRINUSE', async () => {
+  await open('#/p/close'); await buildProject('gosock', solution);
+  await page.locator('.tab[data-tab="machines"]').click(); await sh('A', 'clear'); await sh('B', 'clear');
+  await page.locator('.cmd-run').nth(0).click(); await idle('B'); await page.locator('.cmd-run').nth(1).click(); await page.waitForTimeout(400);
+  await page.locator('.cmd-run').nth(2).click(); await idle('A'); await idle('B'); await page.waitForTimeout(300);
+  await page.locator('.cmd-run').nth(3).click(); await idle('A');
+  await page.locator('.cmd-run').nth(4).click(); await idle('B'); await page.locator('.cmd-run').nth(5).click(); await idle('B');
+  const b = await out('B'), a = await out('A'); console.log(b);
+  assert.match(b, /Flags \[S\], seq \d+, win \d+, length 0\n.*Flags \[S\.\], seq \d+, ack \d+, win \d+, length 0\n.*Flags \[\.\], ack 1, win \d+, length 0\n/);
+  assert.match(b, /10\.0\.0\.1\.\d+ > 10\.0\.0\.2\.9000: Flags \[P\.\], seq 1:22, ack 1, win \d+, length 21/);
+  assert.match(b, /10\.0\.0\.1\.\d+ > 10\.0\.0\.2\.9000: Flags \[F\.\], seq 22, ack 1[\s\S]*10\.0\.0\.2\.9000 > 10\.0\.0\.1\.\d+: Flags \[F\.\], seq 1, ack 23/);
+  assert.match(a, /TIME-WAIT\s+0\s+0\s+10\.0\.0\.1:\d+\s+10\.0\.0\.2:9000/); assert.doesNotMatch(b.split('ss -tan').pop(), /TIME-WAIT/);
+  await open('#/p/reuse'); await buildProject('once');
+  for (let n = 0; n < 6; n++) { await page.locator('.cmd-run').nth(n).click(); await page.waitForTimeout(300); await idle(n === 1 || n === 5 ? 'A' : 'B'); }
+  const rb = await out('B'), ra = await out('A');
+  assert.match(rb, /TIME-WAIT\s+0\s+0\s+10\.0\.0\.2:9000\s+10\.0\.0\.1:\d+/); assert.match(rb, /once: bind: address already in use/);
+  assert.equal((ra.match(/hello from once/g) || []).length, 2);
+});
 // ── IDE features, driven with the keyboard as a student would ──
 const ideDoc = async (src) => {                                  // '@@' marks where the cursor goes
   await open('#/p/go'); await page.locator('.tab[data-tab="code"]').click();

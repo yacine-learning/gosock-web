@@ -27,6 +27,23 @@
   "leak": {
    "bin": "leak",
    "file": "02/leak.go"
+  },
+  "rawrecv": {
+   "bin": "rawrecv",
+   "file": "03/rawrecv.go",
+   "solution": "03/rawrecv.solution.go"
+  },
+  "lazy": {
+   "bin": "lazy",
+   "file": "03/lazy.go"
+  },
+  "tinyrecv": {
+   "bin": "tinyrecv",
+   "file": "03/tinyrecv.go"
+  },
+  "once": {
+   "bin": "once",
+   "file": "03/once.go"
   }
  },
  "modules": [
@@ -166,6 +183,72 @@
      "title": "A bug on purpose: too many open files",
      "minutes": 8,
      "file": "leak"
+    }
+   ]
+  },
+  {
+   "id": "m3",
+   "dir": "03",
+   "title": "The socket",
+   "blurb": "A socket from socket() to TIME_WAIT: the calls, the accept queue, what the kernel keeps inside, options, and how a connection ends.",
+   "items": [
+    {
+     "id": "check3",
+     "kind": "lesson",
+     "quiz": true,
+     "title": "Check: modules 1 and 2",
+     "minutes": 6,
+     "file": "check"
+    },
+    {
+     "id": "calls",
+     "kind": "lesson",
+     "title": "A server, call by call",
+     "minutes": 10,
+     "file": "calls"
+    },
+    {
+     "id": "rawrecv",
+     "kind": "lab",
+     "title": "rawrecv",
+     "minutes": 25,
+     "file": "rawrecv",
+     "lab": "rawrecv"
+    },
+    {
+     "id": "queue",
+     "kind": "lesson",
+     "title": "The kernel answers before you accept",
+     "minutes": 10,
+     "file": "queue"
+    },
+    {
+     "id": "inside",
+     "kind": "lesson",
+     "title": "Inside a socket",
+     "minutes": 10,
+     "file": "inside"
+    },
+    {
+     "id": "tune",
+     "kind": "lesson",
+     "title": "Changing a socket: setsockopt",
+     "minutes": 10,
+     "file": "tune"
+    },
+    {
+     "id": "close",
+     "kind": "lesson",
+     "title": "How a connection ends",
+     "minutes": 10,
+     "file": "close"
+    },
+    {
+     "id": "reuse",
+     "kind": "lesson",
+     "title": "A bug on purpose: address already in use",
+     "minutes": 8,
+     "file": "reuse"
     }
    ]
   }

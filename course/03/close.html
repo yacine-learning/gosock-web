@@ -1,0 +1,36 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>Each side closes its own direction with a <b>FIN</b>, and each FIN is acknowledged: four segments (or three, when an ACK and a FIN travel together).</li>
+<li>The side that closes <b>first</b> ends in <g-t k="timewait">TIME_WAIT</g-t> for 60 seconds; the other side's socket disappears at once.</li>
+<li><code>tcpdump</code> shows every segment a machine sends and receives: flags, sequence numbers, ACKs, windows, lengths.</li>
+</ul></div>
+
+<g-anim scene="tcp-states"></g-anim>
+
+<details class="fold more"><summary>Reading tcpdump, and why TIME_WAIT</summary>
+<p><code>IP 10.0.0.1.41952 &gt; 10.0.0.2.9000: Flags [P.], seq 1:22, ack 1, win 131072, length 21</code>: from A port 41952 to B port 9000; flags <code>S</code> SYN, <code>F</code> FIN, <code>P</code> push, <code>R</code> reset, <code>.</code> ACK; bytes 1 to 21 of the stream (counted from the start of the connection); "I expect your byte 1 next"; my window; 21 bytes of data.</p>
+<p>TIME_WAIT protects the next connection that would use the same four numbers (two addresses, two ports): a delayed segment of the old one must not be taken for new data. It also lets the closing side resend its last ACK if the peer's FIN comes again. 60 seconds is twice the longest time a segment is assumed to survive in a network.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<p>B records the segments of port 9000 in the background, then receives a small file:</p>
+<g-cmd m="B">
+$ tcpdump -n port 9000 &
+$ gosock recv :9000 got.txt
+</g-cmd>
+<g-cmd m="A">
+$ gosock send $B_IP:9000 /tmp/hello.txt
+$ ss -tan
+</g-cmd>
+<g-cmd m="B">
+$ ss -tan
+$ pkill tcpdump
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>The handshake (<code>[S]</code>, <code>[S.]</code>, <code>[.]</code>), the 21 bytes (<code>[P.]</code>, <code>seq 1:22</code>), then A's <code>[F.]</code> first, B's <code>[F.]</code> second, each acknowledged.</li>
+<li>A sent the first FIN: A's <code>ss -tan</code> shows <b>TIME-WAIT</b>; B shows nothing for that connection.</li>
+</ul>
+</div>

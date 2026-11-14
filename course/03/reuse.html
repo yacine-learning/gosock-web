@@ -1,0 +1,41 @@
+<g-callout type="warn"><p>A bug on purpose: a server that cannot start again right after it stopped.</p></g-callout>
+
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>A server that closes a connection first leaves it in TIME_WAIT for 60 seconds, and that old connection still holds the server's port.</li>
+<li>Restarting the server: <code>bind</code> on that port fails with <code>EADDRINUSE</code>, "address already in use", unless the new listening socket has <code>SO_REUSEADDR</code>.</li>
+<li>Go sets it on every listener; programs written with raw calls, in C or in Go, must set it themselves.</li>
+</ul></div>
+
+<g-anim scene="tcp-states"></g-anim>
+
+<details class="fold more"><summary>Why the rule is safe</summary>
+<p><code>SO_REUSEADDR</code> does not let two programs listen on the same port: a second listener still gets <code>EADDRINUSE</code>. It only lets a new listener coexist with old connections in TIME_WAIT. New connections differ from the old ones in the client's port, so TIME_WAIT keeps doing its job.</p>
+<p>The symptom confuses people because it depends on who closed first and on timing: restart after a minute and everything works.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<g-example project="once"><p><code>once</code> greets one client and closes the connection first. Without an argument it does not set <code>SO_REUSEADDR</code>. Build it, then:</p></g-example>
+<g-cmd m="B">
+$ once &
+</g-cmd>
+<g-cmd m="A">
+$ nc $B_IP 9000
+</g-cmd>
+<g-cmd m="B">
+$ ss -tan
+$ once
+$ once -reuse &
+</g-cmd>
+<g-cmd m="A">
+$ nc $B_IP 9000
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>After the first greeting, B holds <code>TIME-WAIT 10.0.0.2:9000</code>: the server's side, because it closed first.</li>
+<li>The second <code>once</code> stops at once: <code>once: bind: address already in use</code>.</li>
+<li><code>once -reuse</code> binds the same port next to the TIME_WAIT connection, and greets A.</li>
+</ul>
+</div>

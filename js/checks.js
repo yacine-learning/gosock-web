@@ -157,6 +157,60 @@ const RAWCOPY = [
   }],
 ];
 
+// lab: rawrecv (module 3)
+async function rawrecvTransfer(h, data, dest = '/tmp/received.bin') {
+  const pr = h.start(h.b, 'rawrecv', '9100', dest);
+  if (!await h.listening(h.b, 9100, 3000, pr)) fail(`nothing listens on port 9100 three seconds after start. The program printed ${show(pr.all)}`);
+  await h.client(h.a, '10.0.0.2', 9100, data);
+  return { ...(await pr.wait(3000)), pr };
+}
+const RAWRECV = [
+  ['A', 'listens on the port it is given', async (h) => {
+    const pr = h.start(h.b, 'rawrecv', '9100', '/tmp/received.bin');
+    if (!await h.listening(h.b, 9100, 3000, pr)) fail(`nothing listens on port 9100 three seconds after start. The program printed ${show(pr.all)}`);
+  }],
+  ['B', 'stores every byte that arrives', async (h) => {
+    const data = pattern((1 << 20) + 13); const r = await rawrecvTransfer(h, data);
+    if (r.timedOut) fail('the program did not finish after the sender closed: does the loop stop when Read returns 0?');
+    const got = h.b.readFile('/tmp/received.bin');
+    if (!got) fail(`/tmp/received.bin was not created. The program printed ${show(r.pr.all)}`);
+    if (!equal(got, data)) fail(`the file has ${got.length} bytes, ${data.length} were sent${got.length === data.length ? ', and they differ' : ''}`);
+  }],
+  ['C', 'prints how many bytes, and exits with status 0', async (h) => {
+    const r = await rawrecvTransfer(h, new Uint8Array(4321));
+    if (!r.pr.stdout.includes('received 4321 bytes')) fail(`expected "received 4321 bytes" on standard output, got ${show(r.pr.stdout)}`);
+    if (r.code !== 0) fail(`${status(r)}, expected 0 (standard error: ${show(r.pr.stderr)})`);
+  }],
+  ['D', 'uses socket system calls, not package net', async (h, src) => {
+    if (/"net"/.test(src)) fail('the code imports package net: here the socket must be made with syscall.Socket, Bind, Listen and Accept');
+    if (/\bos\.(Open|OpenFile|Create)\b|\bio\.Copy\b/.test(src)) fail('the code uses os.Open, os.Create or io.Copy: the file side must be syscall calls too, as in rawcopy');
+    const names = []; h.world.on((t, r) => { if (t === 'sys' && r.comm === 'rawrecv') names.push(r.name); });
+    await rawrecvTransfer(h, new Uint8Array(100));
+    for (const n of ['socket', 'bind', 'listen', 'accept']) if (!names.includes(n)) fail(`no ${n} call in the trace`);
+  }],
+  ['E', 'starts while an old connection on the port is in TIME_WAIT', async (h) => {
+    // B closes a connection on port 9100 first, so B keeps it in TIME_WAIT
+    const { res: srv } = h.helper(h.b, async (sys) => { const l = await sys('socket', 2, 1, 6); await sys('setsockopt', l, 1, 2, 1); await sys('bind', l, '0.0.0.0', 9100); await sys('listen', l, 8); const { fd } = await sys('accept', l); await sys('close', fd); await sys('close', l); });
+    await h.listening(h.b, 9100, 1000);
+    await h.helper(h.a, async (sys) => { const s = await sys('socket', 2, 1, 6); await sys('connect', s, '10.0.0.2', 9100); while ((await sys('read', s, 4096)).length); await sys('close', s); }).res; await srv; await sleep(50);
+    if (![...h.b.socks].some((s) => s.state === 'TIME_WAIT' && s.local.port === 9100)) fail('the check could not set up a TIME_WAIT connection (not your fault: run the checks again)');
+    const pr = h.start(h.b, 'rawrecv', '9100', '/tmp/received.bin');
+    if (!await h.listening(h.b, 9100, 3000, pr)) fail(`with an old connection in TIME_WAIT on port 9100, the program could not listen: ${show(pr.all)}. Set SO_REUSEADDR before Bind`);
+  }],
+  ['F', 'fails cleanly when another program listens on the port', async (h) => {
+    h.sink(h.b, 9100); await h.listening(h.b, 9100, 1000);
+    const r = await h.run(h.b, 3000, 'rawrecv', '9100', '/tmp/x');
+    if (r.timedOut) fail("the program kept running although the port is taken: Bind's error must be returned");
+    if (r.code !== 1 || !r.stderr.includes('address already in use')) fail(`expected exit status 1 and "address already in use" on standard error, got ${status(r)} and ${show(r.stderr)}`);
+  }],
+  ['G', 'an empty transfer: an empty file, and status 0', async (h) => {
+    const r = await rawrecvTransfer(h, new Uint8Array(0));
+    if (r.timedOut || r.code !== 0) fail(`an empty transfer should succeed (${status(r)}, it printed ${show(r.pr.all)})`);
+    const got = h.b.readFile('/tmp/received.bin'); if (!got || got.length) fail('expected an empty /tmp/received.bin');
+    if (!r.pr.stdout.includes('received 0 bytes')) fail(`expected "received 0 bytes", got ${show(r.pr.stdout)}`);
+  }],
+];
+
 // lab: send
 const SEND = [
   ['A', 'sends every byte of the file', async (h) => {
@@ -234,6 +288,16 @@ export const LABS = {
     ],
     explain: '<p>The copy is two loops. The outer one reads until <code>Read</code> says 0 (the end). The inner one, <code>writeAll</code>, keeps writing until the kernel has taken every byte: <code>Write</code> returns how many it took, and on a nearly full disk that is fewer than given. Every error carries what was being done and the kernel\'s words, so <code>rawcopy: write /mnt/small/out.bin: no space left on device</code> tells the whole story.</p>',
     solution: ['func rawcopy(', '\n}\n'], solution2: ['func writeAll(', '\n}\n'],
+  },
+  rawrecv: {
+    title: 'rawrecv', project: 'rawrecv', bin: 'rawrecv', tests: RAWRECV,
+    hints: [
+      'The first lines: <code>ls, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)</code>, the usual error check (<code>return 0, fmt.Errorf("socket: %w", err)</code>), <code>defer syscall.Close(ls)</code>. Each next call has the same shape.',
+      'Then <code>syscall.SetsockoptInt(ls, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)</code>, <code>syscall.Bind(ls, &amp;syscall.SockaddrInet4{Port: port})</code>, <code>syscall.Listen(ls, 8)</code>, and <code>fd, _, err := syscall.Accept(ls)</code> (the <code>_</code> is the client\'s address). Wrap the bind error as <code>fmt.Errorf("bind: %w", err)</code>: its text is "address already in use" when the port is taken.',
+      'The rest is rawcopy with <code>fd</code> as the source: open <code>dest</code> with <code>syscall.Open</code>, loop on <code>syscall.Read(fd, buf)</code> until 0, <code>writeAll</code> each chunk, count. Copy <code>writeAll</code> from your rawcopy, and delete both <code>not implemented yet</code> lines.',
+    ],
+    explain: '<p>Five calls make the server: <code>socket</code>, <code>setsockopt</code>, <code>bind</code>, <code>listen</code>, <code>accept</code>. Everything after <code>accept</code> is the file copy of rawcopy: a connected socket is read like any descriptor. <code>SO_REUSEADDR</code> is the line <code>net.Listen</code> adds for you, so that a restart never waits for old connections to leave TIME_WAIT.</p>',
+    solution: ['func rawrecv(', '\n}\n'], solution2: ['func writeAll(', '\n}\n'],
   },
   send: {
     title: 'gosock send', project: 'gosock', tests: SEND,

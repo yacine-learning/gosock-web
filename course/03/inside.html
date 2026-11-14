@@ -1,0 +1,63 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>A TCP socket in the kernel (a <g-t k="sock">struct sock</g-t>) holds its state, both addresses, a send buffer and a receive buffer with their sizes, sequence numbers, the peer's window, timers and counters.</li>
+<li><code>ss -tnoemi</code> prints most of it for every socket: <code>-o</code> timers, <code>-e</code> identity, <code>-m</code> memory, <code>-i</code> TCP internals.</li>
+<li>Recv-Q is data received but not yet read by the program; Send-Q is data written but not yet acknowledged by the peer.</li>
+</ul></div>
+
+<g-anim scene="socket-lifecycle"></g-anim>
+
+<details class="fold more"><summary>Reading ss -tnoemi</summary>
+<table>
+<tr><th>Field</th><th>Means</th></tr>
+<tr><td><code>skmem:(r…,rb…,t…,tb…)</code></td><td>receive queue bytes and receive buffer size; send queue bytes and send buffer size</td></tr>
+<tr><td><code>bytes_sent / bytes_acked / bytes_received</code></td><td>counters since the connection began</td></tr>
+<tr><td><code>segs_out / segs_in</code></td><td>segments sent and received, ACKs included</td></tr>
+<tr><td><code>snd_wnd</code></td><td>the peer's last advertised window: how much more it can take</td></tr>
+<tr><td><code>rcv_wnd</code></td><td>the window this socket advertised: free room in its receive buffer</td></tr>
+<tr><td><code>rto</code>, <code>rtt</code></td><td>retransmission timeout and measured round-trip time, in ms</td></tr>
+<tr><td><code>timer:(…)</code></td><td>a timer that is running: retransmission, keepalive, timewait</td></tr>
+<tr><td><code>ino</code>, <code>sk</code></td><td>the socket's inode number and kernel object</td></tr>
+</table>
+<p>A real Linux prints more (<code>cwnd</code>, <code>ssthresh</code>, <code>pacing_rate</code>…): they belong to congestion control, which these machines leave out.</p>
+</details>
+<details class="fold kc"><summary>Where the numbers live, in simplified kernel C</summary>
+<g-go file="kernel (simplified).c">
+struct tcp_sock {                 // starts with a struct sock, then TCP's own fields
+    struct inet_connection_sock inet_conn;   // ... struct sock sk inside
+    u32 snd_una;       // oldest byte sent and not yet acknowledged
+    u32 snd_nxt;       // next byte to send
+    u32 rcv_nxt;       // next byte expected from the peer
+    u32 snd_wnd;       // the peer's window             -> ss: snd_wnd
+    u32 rcv_wnd;       // the window we advertise        -> ss: rcv_wnd
+    u32 srtt_us;       // smoothed round-trip time       -> ss: rtt
+    u64 bytes_acked, bytes_received;                  // -> ss: bytes_*
+    u32 segs_out, segs_in, total_retrans;             // -> ss: segs_*, retrans
+};
+// sk->sk_rcvbuf, sk->sk_sndbuf            -> ss: rb, tb
+// sk->sk_rmem_alloc, sk->sk_wmem_queued   -> ss: r, t (and Recv-Q, Send-Q)
+</g-go>
+</details>
+
+<h2 class="run">Run this</h2>
+<p>Set <b>Wire</b> to <b>crawl</b>, start a transfer, and look inside both sockets while it runs:</p>
+<g-cmd m="B">
+$ gosock recv :9000 big.copy &
+</g-cmd>
+<g-cmd m="A">
+$ gosock send $B_IP:9000 /tmp/big.bin &
+$ ss -tnoemi
+</g-cmd>
+<g-cmd m="B">
+$ ss -tnoemi
+</g-cmd>
+<p>Set <b>Wire</b> back to <b>fast</b> to let it finish.</p>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>On A, Send-Q and <code>t</code> are high: written by the program, not yet acknowledged. <code>bytes_acked</code> trails <code>bytes_sent</code>.</li>
+<li>On B, <code>bytes_received</code> on one side matches <code>bytes_acked</code> on the other, give or take what is on the wire.</li>
+<li><code>rb131072</code> and <code>tb87040</code>: the default buffer sizes.</li>
+</ul>
+</div>

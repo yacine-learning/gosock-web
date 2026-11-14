@@ -1,0 +1,56 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>Eight questions on modules 1 and 2, one at a time, no correction until the end; then your grade, the corrections and a recommendation.</li>
+<li>It is a check, not a gate.</li>
+</ul></div>
+
+<g-quiz id="m3" pass="75" about="modules 1 and 2">
+<g-qq correct="c"><g-q><code>syscall.Open("/nope", syscall.O_RDONLY, 0)</code> fails. What does the kernel send back?</g-q>
+  <g-o k="a">The text "no such file or directory".</g-o>
+  <g-o k="b">A descriptor that is not usable.</g-o>
+  <g-o k="c">A negative number: minus the error code, 2 (<code>ENOENT</code>).</g-o>
+  <g-o k="d">Nothing: Go checks that the file exists before asking.</g-o>
+  <g-why><p>The kernel returns -2; Go turns it into -1 and <code>syscall.Errno(2)</code>, whose text comes from a table in the program.</p></g-why></g-qq>
+<g-qq correct="a"><g-q>You call <code>syscall.Read(fd, buf)</code> on a socket with a 64 KB buffer. It returns 1460. What does that mean?</g-q>
+  <g-o k="a">1460 bytes had arrived; more may come. Read again.</g-o>
+  <g-o k="b">The sender sent exactly 1460 bytes.</g-o>
+  <g-o k="c">An error: a read must fill the buffer.</g-o>
+  <g-o k="d">The connection is closing.</g-o>
+  <g-why><p>A read returns what is there now, up to the buffer's size. Only 0 means the end.</p></g-why></g-qq>
+<g-qq correct="d"><g-q><code>syscall.Write(fd, b)</code> returns <code>n &lt; len(b)</code> and no error. What should the program do?</g-q>
+  <g-o k="a">Nothing: the kernel will write the rest by itself.</g-o>
+  <g-o k="b">Report an error.</g-o>
+  <g-o k="c">Write all of <code>b</code> again.</g-o>
+  <g-o k="d">Write <code>b[n:]</code>, and repeat until nothing is left.</g-o>
+  <g-why><p>The kernel took <code>n</code> bytes; the rest is still yours. That is <code>writeAll</code>.</p></g-why></g-qq>
+<g-qq correct="b"><g-q><code>c := syscall.Dup(a)</code>, then you read 5 bytes from <code>c</code>. Where does the next read from <code>a</code> start?</g-q>
+  <g-o k="a">At byte 0: each descriptor has its own offset.</g-o>
+  <g-o k="b">At byte 5: <code>a</code> and <code>c</code> point to the same open file description, and share its offset.</g-o>
+  <g-o k="c">At the end of the file.</g-o>
+  <g-o k="d">It fails: a file cannot be read through two descriptors.</g-o>
+  <g-why><p><code>dup</code> makes a second slot for the same open file description, and the offset lives there.</p></g-why></g-qq>
+<g-qq correct="c"><g-q>Why is the second <code>cat</code> of a 2 MB file much faster than the first?</g-q>
+  <g-o k="a">The first <code>cat</code> left its buffer in memory for the next one.</g-o>
+  <g-o k="b">The disk remembers the last file read.</g-o>
+  <g-o k="c">The kernel kept the file's pages in the page cache: the second read is a memory copy.</g-o>
+  <g-o k="d">The second <code>cat</code> used <code>sendfile</code>.</g-o>
+  <g-why><p>The first read was a miss for every page and waited for the disk; the pages stayed in the page cache.</p></g-why></g-qq>
+<g-qq correct="a"><g-q><code>write</code> to a file returned. Is the data on the disk?</g-q>
+  <g-o k="a">Not necessarily: it is in the page cache, dirty, and reaches the disk later (or at <code>fsync</code>).</g-o>
+  <g-o k="b">Yes: <code>write</code> returns when the disk confirms.</g-o>
+  <g-o k="c">Only if the file is smaller than 4 KB.</g-o>
+  <g-o k="d">No, it is only in your program's buffer.</g-o>
+  <g-why><p>The kernel has it; the disk will have it after writeback, <code>sync</code> or <code>fsync</code>.</p></g-why></g-qq>
+<g-qq correct="d"><g-q>A program fails with <code>EMFILE</code>, "too many open files". What is the most likely bug?</g-q>
+  <g-o k="a">The disk is full.</g-o>
+  <g-o k="b">Another program has the file open.</g-o>
+  <g-o k="c">The file is too large.</g-o>
+  <g-o k="d">Descriptors opened and never closed, until the process reached its limit.</g-o>
+  <g-why><p>Each process may hold a limited number of descriptors (1024 by default); a missing <code>Close</code> uses them up.</p></g-why></g-qq>
+<g-qq correct="b"><g-q>Copying 2 MB to a 1 MB disk, the last calls are <code>write(…, 65536) = 45056</code>, then <code>write(…, 20480) = -1 ENOSPC</code>. What did the program do right?</g-q>
+  <g-o k="a">It used a 64 KB buffer.</g-o>
+  <g-o k="b">After the short write, it tried to write the 20480 bytes left, and got the real error.</g-o>
+  <g-o k="c">It wrote a new chunk after the short write.</g-o>
+  <g-o k="d">Nothing: it should have stopped at the short write.</g-o>
+  <g-why><p>65536 − 45056 = 20480: it wrote exactly what was left, so the error it reports is the true one, with no byte silently dropped.</p></g-why></g-qq>
+</g-quiz>
