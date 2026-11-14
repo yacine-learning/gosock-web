@@ -213,6 +213,16 @@ export class Editor {
     const self = this;
     const inString = (state, pos) => /String|Comment/.test(CM.syntaxTree(state).resolveInner(pos, -1).name);
 
+    // choosing a function inserts "name()" as gopls does: the cursor between the parentheses when it
+    // takes arguments (signature help opens), after them when it takes none; nothing is added when a
+    // "(" already follows. addImport(doc) may return one more change (the import line).
+    const insert = (name, call, takesArgs, addImport) => (view, c, f, to) => {
+      const paren = call && view.state.sliceDoc(to, to + 1) !== '(', ch = addImport?.(view.state.doc);
+      const changes = view.state.changes([{ from: f, to, insert: name + (paren ? '()' : '') }, ...(ch ? [ch] : [])]);
+      const at = changes.mapPos(f) + name.length + (paren ? (takesArgs ? 1 : 2) : 0);    // in the new text
+      view.dispatch({ changes, selection: { anchor: at }, userEvent: 'input.complete' });
+    };
+    const takesArgs = (k, it) => !detailOf(k, it).startsWith('()');
     const complete = (ctx) => {
       if (inString(ctx.state, ctx.pos)) return null;
       const text = ctx.state.doc.toString(), api = self.api, imported = importedNames(text), vars = inferVars(text, api);
@@ -223,14 +233,14 @@ export class Editor {
           const importing = !imported.has(recv);
           options = Object.entries(api[recv]).filter(([k]) => !k.includes('.')).map(([k, it]) => ({
             label: k, type: kindOf[it.k], detail: detailOf(k, it), info: () => docNode({ pkg: recv, key: k }, api), boost: it.k === 'func' ? 1 : 0,
-            apply: importing ? (view, c, f, to) => { const ch = importChange(view.state.doc, pathOf(recv)); view.dispatch({ changes: [{ from: f, to, insert: k }, ...(ch ? [ch] : [])], selection: { anchor: f + k.length }, userEvent: 'input.complete' }); } : undefined,
+            apply: insert(k, it.k === 'func', takesArgs(k, it), importing ? (doc) => importChange(doc, pathOf(recv)) : null),
           }));
         } else if (vars.has(recv)) {
           const ty = vars.get(recv);
-          options = membersOf(api, ty).map(([k, it]) => ({ label: k.split('.')[1], type: 'method', detail: detailOf(k, it), info: () => docNode(ty.type === 'error' ? { pkg: 'builtin', key: k } : { pkg: ty.pkg, key: k }, api) }));
+          options = membersOf(api, ty).map(([k, it]) => ({ label: k.split('.')[1], type: 'method', detail: detailOf(k, it), apply: insert(k.split('.')[1], true, takesArgs(k, it)), info: () => docNode(ty.type === 'error' ? { pkg: 'builtin', key: k } : { pkg: ty.pkg, key: k }, api) }));
         } else {
           const seen = new Map();
-          for (const [pn, items] of Object.entries(api)) if (imported.has(pn)) for (const [k, it] of Object.entries(items)) if (it.k === 'method') { const n = k.split('.')[1]; if (!seen.has(n)) seen.set(n, { label: n, type: 'method', detail: detailOf(k, it) + '  · ' + it.r, info: () => docNode({ pkg: pn, key: k }, api) }); }
+          for (const [pn, items] of Object.entries(api)) if (imported.has(pn)) for (const [k, it] of Object.entries(items)) if (it.k === 'method') { const n = k.split('.')[1]; if (!seen.has(n)) seen.set(n, { label: n, type: 'method', detail: detailOf(k, it) + '  · ' + it.r, apply: insert(n, true, takesArgs(k, it)), info: () => docNode({ pkg: pn, key: k }, api) }); }
           options = [...seen.values()];
         }
         return options.length ? { from, options, validFor: /^\w*$/ } : null;
@@ -239,16 +249,17 @@ export class Editor {
       const from = w ? w.from : ctx.pos, options = [];
       for (const k of KEYWORDS) options.push({ label: k, type: 'keyword', boost: -2 });
       for (const k of TYPES) options.push({ label: k, type: 'type', boost: -2 });
-      for (const [n, s] of BUILTINS) options.push({ label: n, type: 'function', detail: s.slice(n.length), boost: -1 });
+      for (const [n, s] of BUILTINS) options.push({ label: n, type: 'function', detail: s.slice(n.length), boost: -1, apply: insert(n, true, !s.startsWith(n + '()')) });
       for (const [label, tpl, d] of SNIPPETS) options.push(CM.snippetCompletion(tpl, { label, detail: d, type: 'text', boost: 2 }));
       for (const pn of Object.keys(api)) {
         const isImp = imported.has(pn);
         options.push({ label: pn, type: 'namespace', detail: isImp ? 'package' : 'package (adds the import)', boost: isImp ? 1 : -3,
-          apply: isImp ? undefined : (view, c, f, to) => { const ch = importChange(view.state.doc, pathOf(pn)); view.dispatch({ changes: [{ from: f, to, insert: pn }, ...(ch ? [ch] : [])], selection: { anchor: f + pn.length }, userEvent: 'input.complete' }); } });
+          apply: isImp ? undefined : insert(pn, false, false, (doc) => importChange(doc, pathOf(pn))) });
       }
-      const own = new Set(); const before = ctx.state.sliceDoc(0, from);
+      const own = new Set();
       for (const m of text.matchAll(/\b([A-Za-z_]\w{1,})\b/g)) { if (m.index >= from - 1 && m.index <= ctx.pos) continue; if (!NOT_VARS.has(m[1]) && !api[m[1]] && !own.has(m[1])) own.add(m[1]); }
-      for (const n of own) options.push({ label: n, type: /\bfunc\s+n\b/.test(before) ? 'function' : 'variable', boost: 0 });
+      const fns = ownFuncs(text);
+      for (const n of own) { const fn = fns.get(n); options.push(fn ? { label: n, type: 'function', detail: fn.s.slice(5 + n.length), boost: 0, apply: insert(n, true, fn.a.length > 0) } : { label: n, type: 'variable', boost: 0 }); }
       return { from, options, validFor: /^\w*$/ };
     };
 

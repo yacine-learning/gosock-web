@@ -143,7 +143,29 @@ test('IDE: completion after a package name, and the import is added', async () =
   await page.keyboard.type('Lis'); await page.waitForTimeout(150); await shot('ide-complete');
   assert.match(await page.locator('.cm-tooltip-autocomplete [aria-selected]').innerText(), /^Listen/);
   await page.keyboard.press('Enter');
-  const t = await docText(); assert.match(t, /import \(\n\t"fmt"\n\t"net"\n\)/); assert.match(t, /ln, err := net\.Listen\n/);
+  const t = await docText(); assert.match(t, /import \(\n\t"fmt"\n\t"net"\n\)/); assert.match(t, /ln, err := net\.Listen\(\)\n/);
+  await page.keyboard.type('"tcp"');                                   // the cursor was left between the parentheses, after the new import
+  assert.match(await docText(), /ln, err := net\.Listen\("tcp"\)\n/);
+});
+test('IDE: choosing a function adds its parentheses', async () => {
+  const pick = async (typed, label) => {
+    await page.keyboard.type(typed); await page.waitForSelector('.cm-tooltip-autocomplete');
+    await page.waitForFunction((l) => new RegExp('^' + l + '\\b').test(document.querySelector('.cm-tooltip-autocomplete [aria-selected]')?.innerText || ''), label);
+    await page.waitForTimeout(150); await page.keyboard.press('Enter');
+  };
+  const line = () => page.evaluate(() => { const v = window.gosock.editor.view, h = v.state.selection.main.head, l = v.state.doc.lineAt(h); return l.text.slice(0, h - l.from) + '|' + l.text.slice(h - l.from); });
+  await ideDoc('package main\n\nimport (\n\t"net"\n\t"os"\n)\n\nfunc send(addr string) error { return nil }\n\nfunc main() {\n\tln, _ := net.Listen("tcp", ":9")\n\t@@\n}\n');
+  await pick('os.Exi', 'Exit'); assert.equal(await line(), '\tos.Exit(|)');              // takes an argument: the cursor goes inside
+  await page.waitForSelector('.cm-sighelp');                                               // and signature help opens
+  await page.keyboard.press('End'); await page.keyboard.press('Enter');
+  await pick('ln.Acc', 'Accept'); assert.equal(await line(), '\tln.Accept()|');          // takes none: the cursor goes after
+  await page.keyboard.press('Enter'); await pick('sen', 'send'); assert.equal(await line(), '\tsend(|)');   // the program's own function
+  await page.keyboard.press('End'); await page.keyboard.press('Enter');
+  // an existing "(" is not doubled
+  await page.evaluate(() => { const v = window.gosock.editor.view, l = v.state.doc.lineAt(v.state.selection.main.head); v.dispatch({ changes: { from: l.from, to: l.to, insert: '\tos.Exi(1)' }, selection: { anchor: l.from + 7 } }); });
+  await page.keyboard.press('Control+Space'); await page.waitForSelector('.cm-tooltip-autocomplete');
+  await page.waitForFunction(() => /^Exit/.test(document.querySelector('.cm-tooltip-autocomplete [aria-selected]')?.innerText || '')); await page.waitForTimeout(150); await page.keyboard.press('Enter');
+  assert.equal(await line(), '\tos.Exit|(1)');
 });
 test('IDE: completion knows what a variable is (Accept, Close on a Listener; Write on a File)', async () => {
   await ideDoc(BASE.replace('@@', 'ln, err := net.Listen("tcp", ":9")\n\tln.@@'));
