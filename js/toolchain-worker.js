@@ -91,23 +91,38 @@ async function tool(name, argv) {
   return { code, output };
 }
 // build({ 'main.go': source, ... }) -> { ok, module } or { ok: false, errors }
-async function build(sources) {
+async function build(sources, linkIt = true) {
   await load();
   for (const k of [...files.keys()]) if (k.startsWith('/src/') || k.startsWith('/out/')) files.delete(k);
   const names = [];
   for (const [name, src] of Object.entries(sources)) { const b = new TextEncoder().encode(src); files.set('/src/' + name, { data: b, size: b.length }); names.push('/src/' + name); }
   const clean = (s) => s.replaceAll('/src/', '').trim();
-  let r = await tool('compile', ['-p', 'main', '-complete', '-pack', '-importcfg', '/importcfg', '-o', '/out/main.a', ...names]);
+  let r = await tool('compile', ['-p', 'main', '-complete', '-pack', ...(linkIt ? [] : ['-e']), '-importcfg', '/importcfg', '-o', '/out/main.a', ...names]);
   if (r.code !== 0) return { ok: false, errors: clean(r.output) };
+  if (!linkIt) return { ok: true };
   r = await tool('link', ['-importcfg', '/importcfg', '-buildmode=exe', '-s', '-w', '-o', '/out/main.wasm', '/out/main.a']);
   if (r.code !== 0) return { ok: false, errors: 'link: ' + clean(r.output) };
   const out = files.get('/out/main.wasm');
   return { ok: true, module: await WebAssembly.compile(out.data.slice(0, out.size)), size: out.size };
 }
+// gofmt: the real go/format, built to WebAssembly, loaded the first time it is needed
+let fmtReady = null;
+function loadFmt() {
+  fmtReady = fmtReady || (async () => {
+    await load();
+    const bin = await fetchGz('gofmt.wasm.gz', 'formatter');
+    const go = new Go(); const { instance } = await WebAssembly.instantiate(bin, go.importObject);
+    go.run(instance);                       // never returns: it keeps gofmt() registered
+    for (let i = 0; i < 200 && !globalThis.gofmt; i++) await new Promise((r) => setTimeout(r, 10));
+  })();
+  return fmtReady;
+}
 onmessage = async (e) => {
   const d = e.data;
   try {
     if (d.t === 'load') { await load(); postMessage({ t: 'done', id: d.id, ok: true }); }
+    else if (d.t === 'check') { const r = await build(d.sources, false); postMessage({ t: 'done', id: d.id, ...r }); }
+    else if (d.t === 'format') { await loadFmt(); postMessage({ t: 'done', id: d.id, ...globalThis.gofmt(d.source) }); }
     else if (d.t === 'build') { const t0 = performance.now(); const r = await build(d.sources); postMessage({ t: 'done', id: d.id, ...r, ms: Math.round(performance.now() - t0) }); }
   } catch (err) { postMessage({ t: 'done', id: d.id, ok: false, errors: 'toolchain failure: ' + (err && err.message || err) }); }
 };

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds everything the browser needs to compile and link Go programs:
 #   toolchain/compile.wasm.gz, toolchain/link.wasm.gz  the Go compiler and linker, as WebAssembly
+#   toolchain/gofmt.wasm.gz                            go/format, for the editor's Format command
 #   toolchain/std.pack.gz                              the standard library packages, compiled for js/wasm
 #                                                      with the files in gosrc/ replacing Go's own
 #   js/wasm_exec.js                                    Go's JavaScript support file
@@ -22,6 +23,8 @@ GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" -o "$TMP/compile.wasm" c
 GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" -o "$TMP/link.wasm" cmd/link
 gzip -9 -n -c "$TMP/compile.wasm" > "$OUT/compile.wasm.gz"
 gzip -9 -n -c "$TMP/link.wasm" > "$OUT/link.wasm.gz"
+GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" -o "$TMP/gofmt.wasm" tools/gofmt/main.go
+gzip -9 -n -c "$TMP/gofmt.wasm" > "$OUT/gofmt.wasm.gz"
 
 echo "== standard library with gosrc/ overlay"
 python3 - "$ROOT" "$GOROOT" "$TMP" <<'PY'

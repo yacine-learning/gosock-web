@@ -48,9 +48,12 @@
         <button class="btn sm" id="runChecks" hidden>Run the checks</button>
         <span class="build-status" id="buildStatus">Not built yet</span>
         <span class="sp"></span>
+        <button class="btn sm" id="format" title="Format with gofmt (Shift+Alt+F)">Format</button>
+        <button class="btn sm ghost" id="keys" title="Keyboard shortcuts of the editor">Shortcuts</button>
         <button class="btn sm ghost" id="resetCode" title="Throw away your changes and start again from the given code">Start over</button>
       </div>
       <div class="editor" id="editor"></div>
+      <div class="ed-status" id="edStatus"></div>
       <div class="problems" id="problems" hidden></div>
     </div>
   </section>

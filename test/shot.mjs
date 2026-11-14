@@ -1,4 +1,4 @@
-// node test/shot.mjs '#/p/start' out.png [width height]  : screenshot of the app
+// node test/shot.mjs '#/p/start' out.png [width height]  : screenshot of the app (EVAL=js to run first, WAIT=ms after it)
 import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const [hash, out, w = 1500, h = 900] = process.argv.slice(2);

@@ -195,14 +195,10 @@ g-lab, g-example { display: block; margin: 20px 0; padding: 18px 20px; border-ra
 .code-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
 .code-bar .sp { flex: 1; }
 .build-status { font-size: 13px; color: var(--muted); } .build-status.ok { color: var(--net); } .build-status.bad { color: var(--danger); }
-.editor { flex: 1; min-height: 0; display: flex; background: var(--code-bg); font: 13.5px/1.55 var(--mono); position: relative; }
-.ed-gut { flex: none; padding: 12px 8px 12px 12px; text-align: right; color: #47556e; user-select: none; overflow: hidden; white-space: pre; }
-.ed-gut .err { color: #fff; background: var(--danger); border-radius: 4px; }
-.ed-main { flex: 1; position: relative; min-width: 0; overflow: hidden; }
-.ed-hl, .ed-ta { position: absolute; inset: 0; margin: 0; padding: 12px 14px 12px 6px; font: inherit; tab-size: 4; white-space: pre; overflow: auto; border: 0; }
-.ed-hl { color: var(--code-text); pointer-events: none; overflow: hidden; }
-.ed-ta { background: transparent; color: transparent; caret-color: #fff; resize: none; outline: 0; -webkit-text-fill-color: transparent; }
-.ed-ta::selection { background: rgba(76,201,240,.3); }
+.editor { flex: 1; min-height: 0; display: flex; background: var(--code-bg); position: relative; }
+.editor .cm-editor { flex: 1; min-width: 0; }
+.ed-status { display: flex; align-items: center; gap: 14px; padding: 4px 14px; border-top: 1px solid var(--line); background: var(--surface-2); font: 12px var(--sans); color: var(--text-2); }
+.ed-status .sp { flex: 1; } .ed-dim { color: var(--muted); } .ed-ok { color: var(--net); } .ed-bad { color: var(--danger); font-weight: 700; } .ed-warn { color: var(--kernel); font-weight: 700; }
 .problems { flex: none; max-height: 34%; overflow-y: auto; border-top: 1px solid var(--line-2); background: var(--surface); padding: 8px 12px; font: 13px/1.5 var(--mono); }
 .problems .p-h { font: 700 12px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--danger); margin-bottom: 4px; }
 .problems a { display: block; color: var(--text-2); white-space: pre-wrap; cursor: pointer; }
@@ -232,3 +228,6 @@ g-lab, g-example { display: block; margin: 20px 0; padding: 18px 20px; border-ra
   .bench { height: 92vh; border-top: 1px solid var(--line-2); }
   .view { padding: 20px 16px 40px; }
 }
+
+.modal table { width: 100%; border-collapse: collapse; font-size: 14px; } .modal td { padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; color: var(--text-2); }
+.modal td:first-child { white-space: nowrap; }

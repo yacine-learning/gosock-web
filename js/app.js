@@ -42,7 +42,7 @@ function tab(name) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === name));
   document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === 'pane-' + name));
   $('#machineTools').style.visibility = name === 'machines' ? '' : 'hidden';
-  if (name === 'code') editor.paint();
+  if (name === 'code') { editor.paint(); loadToolchain(); }
 }
 document.querySelector('.tabs').addEventListener('click', (e) => { const t = e.target.closest('.tab'); if (t) tab(t.dataset.tab); });
 $('#speed').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; $('#speed .on').classList.remove('on'); b.classList.add('on'); S.sim.world.speed = +b.dataset.s; });
@@ -56,6 +56,21 @@ $('#reset').addEventListener('click', () => { boot(); S.toast('Both machines reb
     const up = () => { sp.classList.remove('drag'); sp.removeEventListener('pointermove', move); try { localStorage.setItem('gosock-web:split', app.style.getPropertyValue('--split')); } catch (e) { /* not kept */ } };
     sp.addEventListener('pointermove', move); sp.addEventListener('pointerup', up, { once: true });
   });
+}
+
+// the compiler is fetched when the student first opens the Code tab, so Build and the live error checks are ready
+let tcLoading = null;
+function loadToolchain() {
+  if (toolchain.loaded || tcLoading) return;
+  edStatus();
+  tcLoading = toolchain.load().then(() => { tcLoading = null; editor.toolchainReady(); edStatus(); });
+}
+function edStatus(st = editor?.status) {
+  if (!st) return;
+  const el = $('#edStatus'); if (!el) return;
+  const live = !toolchain.loaded ? '<span class="ed-dim">loading the Go compiler for live checks…</span>' : st.checking ? '<span class="ed-dim">checking…</span>'
+    : st.errors ? `<span class="ed-bad">${st.errors} error${st.errors > 1 ? 's' : ''}</span>` : st.warnings ? `<span class="ed-warn">${st.warnings} warning${st.warnings > 1 ? 's' : ''}</span>` : '<span class="ed-ok">no errors</span>';
+  el.innerHTML = `<span>Ln ${st.line}, Col ${st.col}${st.sel ? ` · ${st.sel} cursors` : ''}</span><span class="sp"></span>${live}<span class="ed-dim">Go ${esc(S.index.go)}</span>`;
 }
 
 // ── code: one project (a main.go that builds one command) at a time ──
@@ -79,12 +94,12 @@ async function build() {
   const r = await building; building = null; $('#build').disabled = false;
   if (!r.ok) {
     status('The compiler refused the program', 'bad');
-    const lines = r.errors.split('\n').filter(Boolean), errLines = [];
+    const lines = r.errors.split('\n').filter(Boolean), probs = [];
     $('#problems').hidden = false;
-    $('#problems').innerHTML = '<div class="p-h">Compiler messages</div>' + lines.map((l) => { const m = /^main\.go:(\d+):(\d+)?/.exec(l); if (m) errLines.push(+m[1]); return `<a ${m ? `data-l="${m[1]}" data-c="${m[2] || 1}"` : ''}>${esc(l)}</a>`; }).join('');
-    editor.setErrors(errLines); return null;
+    $('#problems').innerHTML = '<div class="p-h">Compiler messages</div>' + lines.map((l) => { const m = /^main\.go:(\d+):(\d+)?:?\s*(.*)/.exec(l); if (m) probs.push({ line: +m[1], col: +(m[2] || 1), msg: m[3] }); return `<a ${m ? `data-l="${m[1]}" data-c="${m[2] || 1}"` : ''}>${esc(l)}</a>`; }).join('');
+    editor.setProblems(probs); return null;
   }
-  editor.setErrors([]); built.set(p.bin, r.module);
+  editor.setProblems([]); built.set(p.bin, r.module);
   S.sim.world.programs.set(p.bin, goProgram(r.module));
   status(`Built in ${(r.ms / 1000).toFixed(1)} s. The command ${p.bin} is ready on A and B.`, 'ok');
   return r.module;
@@ -162,6 +177,15 @@ async function route() {
   const lab = view.querySelector('g-lab'); if (lab) { activeLab = lab.id; if (project === LABS[lab.id].project) $('#runChecks').hidden = false; }
 }
 
+// ── editor shortcuts ──
+function shortcuts() {
+  const rows = [['Ctrl+Space', 'completion (it also opens while you type; after <code>net.</code> it lists the package)'], ['hover', 'documentation of a function, type or variable'], ['Ctrl+Enter or Ctrl+S', 'build'], ['Shift+Alt+F', 'format with gofmt'],
+    ['Ctrl+F', 'find and replace'], ['Ctrl+D', 'select the next occurrence (several cursors)'], ['Alt+click', 'add a cursor'], ['Ctrl+Alt+G', 'go to line'], ['Ctrl+/', 'comment or uncomment'], ['Tab, Shift+Tab', 'indent, unindent'], ['Ctrl+Z, Ctrl+Shift+Z', 'undo, redo'], ['F8', 'next error or warning'], ['type <code>iferr</code>, <code>forr</code>, <code>openf</code>…', 'snippets']];
+  const m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = `<div class="box"><h3>Editor shortcuts</h3><p class="meta">On a Mac, Ctrl is Cmd. Red underlines come from the real Go compiler, a moment after you stop typing; unused imports and variables show as warnings until you build.</p><table>${rows.map(([k, d]) => `<tr><td>${k.replace(/^([^<]*)$/, (x) => x.split(' or ').map((y) => `<kbd>${y}</kbd>`).join(' or '))}</td><td>${d}</td></tr>`).join('')}</table><div class="row"><button class="btn sm" data-a="close">Close</button></div></div>`;
+  document.body.append(m); m.addEventListener('click', (e) => { if (e.target === m || e.target.dataset.a === 'close') m.remove(); });
+}
+
 // ── notes for the author ──
 $('#noteBtn').addEventListener('click', () => {
   const quote = String(getSelection()).trim().slice(0, 400), title = items().find((x) => x.id === S.page)?.title || S.page;
@@ -191,8 +215,13 @@ $('#noteBtn').addEventListener('click', () => {
 
 // ── start ──
 (async () => {
-  [S.index, S.glossary] = await Promise.all([fetch('course/index.json').then((r) => r.json()), fetch('course/glossary.json').then((r) => r.json())]);
-  editor = new Editor($('#editor'), { onChange: (v) => { if (project) { S.store.code[project] = v; clearTimeout(editor.t); editor.t = setTimeout(S.save, 400); } }, onBuild: build });
+  let api;
+  [S.index, S.glossary, api] = await Promise.all([fetch('course/index.json').then((r) => r.json()), fetch('course/glossary.json').then((r) => r.json()), fetch('js/goapi.json').then((r) => r.json())]);
+  editor = new Editor($('#editor'), { api, toolchain, toast: S.toast, onBuild: build, onStatus: edStatus,
+    onChange: (v) => { if ($('#buildStatus').classList.contains('ok')) status('Edited since the last build', ''); if (project) { S.store.code[project] = v; clearTimeout(editor.t); editor.t = setTimeout(S.save, 400); } } });
+  edStatus();
+  $('#format').addEventListener('click', () => editor.format());
+  $('#keys').addEventListener('click', shortcuts);
   $('#build').addEventListener('click', build);
   $('#runChecks').addEventListener('click', () => activeLab && S.runChecks(activeLab));
   $('#resetCode').addEventListener('click', async () => { if (!confirm('Replace your code with the starting code of this program?')) return; delete S.store.code[project]; S.save(); editor.value = await source(S.index.projects[project].file); });
@@ -203,5 +232,5 @@ $('#noteBtn').addEventListener('click', () => {
   addEventListener('hashchange', route);
   if (!location.hash && S.store.last) location.hash = '#/p/' + S.store.last; else route();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
-  window.gosock = { S, terms, build, toolchain, bytes };       // for tests and for the curious
+  window.gosock = { S, terms, build, toolchain, bytes, editor };       // for tests and for the curious
 })();

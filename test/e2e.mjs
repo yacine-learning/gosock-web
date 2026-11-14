@@ -16,7 +16,7 @@ const sh = (m, cmd, ms = 15000) => page.evaluate(async ([m, cmd, ms]) => {
 const start = (m, cmd) => page.evaluate(([m, cmd]) => { window.gosock.terms[m].run(cmd); }, [m, cmd]);
 const idle = (m, ms = 15000) => page.waitForFunction((m) => !window.gosock.terms[m].isBusy, m, { timeout: ms });
 const out = (m) => page.evaluate((m) => window.gosock.terms[m].out.textContent, m);
-const setCode = (src) => page.evaluate((src) => { const ta = document.querySelector('.ed-ta'); ta.value = src; ta.dispatchEvent(new Event('input')); }, src);
+const setCode = (src) => page.evaluate((src) => { window.gosock.editor.replace(src); }, src);
 const checks = async (lab) => { await page.evaluate((lab) => window.gosock.S.runChecks(lab), lab); return page.evaluate((lab) => window.gosock.S.store.labs[lab], lab); };
 const shot = async (name) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png` }); };
 const tests = []; const test = (n, f) => tests.push([n, f]);
@@ -115,7 +115,79 @@ test('pages "send", "fd", "box": real transfer, live kernel view, strace counts'
   console.log('      B made', reads, 'read calls;', (await sh('A', 'cat send.trace')).split('\n').length, 'lines in send.trace');
   assert.match(await sh('A', 'strace cat /tmp/hello.txt'), /openat\(AT_FDCWD, "\/tmp\/hello.txt", O_RDONLY\|O_CLOEXEC\) = 3\nread\(3, "hello from machine A\\n", 131072\) = 21\nhello from machine A\nwrite\(1, "hello from machine A\\n", 21\) = 21\nread\(3, "", 131072\) = 0\nclose\(3\) = 0/);
 });
+// ── IDE features, driven with the keyboard as a student would ──
+const ideDoc = async (src) => {                                  // '@@' marks where the cursor goes
+  await open('#/p/go'); await page.locator('.tab[data-tab="code"]').click();
+  await page.waitForFunction(() => window.gosock.toolchain.loaded, null, { timeout: 60000 });
+  await page.evaluate((src) => { const e = window.gosock.editor, at = src.indexOf('@@'); e.replace(src.replace('@@', '')); e.view.dispatch({ selection: { anchor: at < 0 ? src.length : at } }); e.focus(); }, src);
+  await page.keyboard.press('Escape'); await page.waitForTimeout(150);          // close a popup left by the previous test
+};
+const BASE = 'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("x")\n\t@@\n}\n';
+const docText = () => page.evaluate(() => window.gosock.editor.value);
+test('IDE: live compiler errors and warnings, with the message on hover', async () => {
+  await ideDoc(BASE.replace('@@', 'y := nope(1)@@'));
+  await page.waitForSelector('.cm-lintRange-error', { timeout: 10000 });
+  await page.waitForFunction(() => /error/.test(document.querySelector('#edStatus').textContent));
+  await page.locator('.cm-lintRange-error').first().hover(); await page.waitForSelector('.cm-tooltip-lint');
+  assert.match(await page.locator('.cm-tooltip-lint').innerText(), /undefined: nope/);
+  await shot('ide-diagnostic');
+  await ideDoc(BASE.replace('@@', 'y := 1@@'));                  // an unused variable is only a warning
+  await page.waitForSelector('.cm-lintRange-warning', { timeout: 10000 });
+  assert.match(await page.locator('#edStatus').innerText(), /1 warning/);
+  await ideDoc(BASE); await page.waitForFunction(() => /no errors/.test(document.querySelector('#edStatus').textContent), null, { timeout: 10000 });
+});
+test('IDE: completion after a package name, and the import is added', async () => {
+  await ideDoc(BASE.replace('@@', 'ln, err := net.@@'));
+  await page.keyboard.press('Control+Space'); await page.waitForSelector('.cm-tooltip-autocomplete');
+  const list = await page.locator('.cm-tooltip-autocomplete').innerText(); assert.match(list, /Listen/); assert.match(list, /Dial/);
+  await page.keyboard.type('Lis'); await shot('ide-complete');
+  assert.match(await page.locator('.cm-tooltip-autocomplete [aria-selected]').innerText(), /^Listen/);
+  await page.keyboard.press('Enter');
+  const t = await docText(); assert.match(t, /import \(\n\t"fmt"\n\t"net"\n\)/); assert.match(t, /ln, err := net\.Listen\n/);
+});
+test('IDE: completion knows what a variable is (Accept, Close on a Listener; Write on a File)', async () => {
+  await ideDoc(BASE.replace('@@', 'ln, err := net.Listen("tcp", ":9")\n\tln.@@'));
+  await page.keyboard.press('Control+Space'); await page.waitForSelector('.cm-tooltip-autocomplete'); const l1 = await page.locator('.cm-tooltip-autocomplete').innerText();
+  assert.match(l1, /Accept/); assert.match(l1, /Close/); assert.doesNotMatch(l1, /Println/);
+  await ideDoc(BASE.replace('@@', 'f, err := os.Create("x")\n\tf.@@'));
+  await page.keyboard.press('Control+Space'); await page.waitForSelector('.cm-tooltip-autocomplete'); const l2 = await page.locator('.cm-tooltip-autocomplete').innerText(); assert.match(l2, /WriteString/); assert.match(l2, /Close/);
+  await ideDoc(BASE.replace('@@', 'err.@@')); await page.keyboard.press('Control+Space'); await page.waitForSelector('.cm-tooltip-autocomplete'); assert.match(await page.locator('.cm-tooltip-autocomplete').innerText(), /Error/);
+});
+test('IDE: snippets and plain-word completion', async () => {
+  await ideDoc(BASE.replace('@@', 'iferr@@'));
+  await page.keyboard.press('Control+Space'); await page.waitForFunction(() => /check an error/.test(document.querySelector('.cm-tooltip-autocomplete')?.innerText || '')); await page.waitForTimeout(200); await page.keyboard.press('Enter');   // CodeMirror ignores Enter in the first 75 ms of a popup
+  assert.match(await docText(), /\tif err != nil \{\n\t\treturn err\n\t\}/);
+});
+test('IDE: hover documentation', async () => {
+  await ideDoc('package main\n\nimport (\n\t"io"\n\t"os"\n)\n\nfunc main() {\n\tf, _ := os.Open("x")\n\tio.Copy(f, f)\n\tf.Close()\n}\n');
+  const hoverWord = async (word, nth = 0) => {
+    const box = await page.evaluate(([w, n]) => { const v = window.gosock.editor.view; const at = [...v.state.doc.toString().matchAll(new RegExp('\\b' + w + '\\b', 'g'))][n].index + 1; const r = v.coordsAtPos(at); return { x: r.left, y: r.top + 5 }; }, [word, nth]);
+    await page.mouse.move(0, 0); await page.mouse.move(box.x, box.y); await page.waitForSelector('.cm-tooltip-hover', { timeout: 5000 });
+    return page.locator('.cm-tooltip-hover').innerText();
+  };
+  assert.match(await hoverWord('Copy'), /func Copy\(dst Writer, src Reader\) \(written int64, err error\)\s+Copy copies from src to dst/);
+  await shot('ide-hover');
+  assert.match(await hoverWord('Close'), /func \(f \*File\) Close\(\) error/);
+  assert.match(await hoverWord('f', 0), /f: os\.File/);
+});
+test('IDE: gofmt keeps the cursor line, refuses code that does not parse', async () => {
+  await ideDoc('package main\nimport "fmt"\nfunc   main( ) {\nfmt.Println( "x" )@@\n}\n');
+  await page.locator('#format').click(); await page.waitForFunction(() => /^package main\n\nimport "fmt"\n\nfunc main\(\) \{\n\tfmt\.Println\("x"\)\n\}\n$/.test(window.gosock.editor.value), null, { timeout: 15000 });
+  await ideDoc('package main\nfunc main( {\n}\n'); await page.locator('#format').click();
+  await page.waitForFunction(() => /does not parse/.test(document.querySelector('.toasts').textContent), null, { timeout: 15000 });
+});
+test('IDE: search, several cursors, comment toggle, bracket closing, undo', async () => {
+  await ideDoc('package main\n\nfunc main() {\n\tfoo := 1\n\tfoo++\n\t@@\n}\n');
+  await page.keyboard.press('Control+f'); await page.waitForSelector('.cm-search'); await shot('ide-search'); await page.keyboard.press('Escape');
+  await page.evaluate(() => { const e = window.gosock.editor, at = e.value.indexOf('foo'); e.view.dispatch({ selection: { anchor: at, head: at + 3 } }); e.focus(); });
+  await page.keyboard.press('Control+d'); await page.keyboard.type('bar');
+  assert.match(await docText(), /bar := 1\n\tbar\+\+/);
+  await page.keyboard.press('Control+z'); await page.keyboard.press('Control+z');
+  await ideDoc('package main\n\nfunc main() {\n\t@@\n}\n'); await page.keyboard.type('x := []int{1, 2'); assert.match(await docText(), /x := \[\]int\{1, 2\}\n/);
+  await page.keyboard.press('Control+/'); assert.match(await docText(), /\/\/ x := /);
+});
 test('reboot gives fresh machines and keeps built programs', async () => {
+  await page.locator('.tab[data-tab="machines"]').click();
   await page.locator('#reset').click();
   assert.doesNotMatch(await sh('B', 'ls'), /big.copy/);
   assert.match(await sh('A', 'gosock'), /usage: gosock/);
