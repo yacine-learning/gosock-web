@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gosock · what Linux does when a file crosses the network</title>
+<meta name="description" content="A course on Linux kernel networking and files: write real Go, run it on two simulated Linux machines, and watch the kernel work.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1220'/%3E%3Cpath d='M8 21l5-5-5-5M16 22h8' stroke='%2338bdf8' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.webmanifest">
+<script>try { const t = localStorage.getItem('gosock-web:theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="app" id="app">
+  <section class="page-col">
+    <header class="topbar">
+      <button class="icon-btn" id="menu" aria-label="Course contents" title="Course contents"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg></button>
+      <div class="crumbs" id="crumbs"></div>
+      <button class="note-btn" id="noteBtn" title="Write a note about this page (select text first to quote it)">Note</button>
+      <button class="icon-btn" id="theme" aria-label="Switch between light and dark" title="Light / dark"></button>
+    </header>
+    <div class="page-scroll" id="scroll"><article id="view" class="view"></article></div>
+  </section>
+  <div class="split" id="split" title="Drag to resize"></div>
+  <section class="bench" id="bench">
+    <header class="bench-h">
+      <div class="tabs" role="tablist">
+        <button class="tab on" data-tab="machines" role="tab">Machines</button>
+        <button class="tab" data-tab="code" role="tab">Code <span id="codeName"></span></button>
+      </div>
+      <div class="bench-tools" id="machineTools">
+        <span class="lbl">Wire</span>
+        <div class="seg" id="speed"><button data-s="0" class="on" title="Packets cross as fast as the browser allows">fast</button><button data-s="4" title="A few hundred packets per second: you can watch the buffers">slow</button><button data-s="150" title="A few packets per second: you can read each one">crawl</button></div>
+        <button class="btn sm" id="reset" title="Reboot both machines: files you created and running programs are lost">Reboot machines</button>
+      </div>
+    </header>
+    <div class="pane on" id="pane-machines">
+      <div class="kview" id="kview"></div>
+      <div class="terms">
+        <div class="term" id="termA"></div>
+        <div class="term" id="termB"></div>
+      </div>
+    </div>
+    <div class="pane" id="pane-code">
+      <div class="code-bar">
+        <button class="btn primary sm" id="build" title="Ctrl+Enter">Build</button>
+        <button class="btn sm" id="runChecks" hidden>Run the checks</button>
+        <span class="build-status" id="buildStatus">Not built yet</span>
+        <span class="sp"></span>
+        <button class="btn sm ghost" id="resetCode" title="Throw away your changes and start again from the given code">Start over</button>
+      </div>
+      <div class="editor" id="editor"></div>
+      <div class="problems" id="problems" hidden></div>
+    </div>
+  </section>
+</div>
+<aside class="side" id="side"></aside>
+<div class="scrim" id="scrim"></div>
+<div class="toasts" id="toasts"></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

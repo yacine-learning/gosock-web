@@ -1,0 +1,49 @@
+<p class="lede">Every trace is full of small numbers: <code>openat(…) = 3</code>, <code>read(3, …)</code>. This page answers one question properly: <b>what is a file descriptor, exactly?</b></p>
+
+<h2>The problem it solves</h2>
+<p>Reading a file takes many system calls: open it, read a bit, read more, close it. Between those calls the kernel must remember <i>which</i> file, <i>how far</i> you have read, and whether you may write. So the kernel keeps the object itself and gives your program a <b>handle</b>: a small number. That number is the <g-t k="fd">file descriptor</g-t>.</p>
+<p>Every process has its own <b>table</b>, kept by the kernel. A file descriptor is the <b>slot number</b> in that table. Each slot points to an <g-t k="ofd">open file description</g-t>, which says what the thing is and where you are in it.</p>
+
+<g-anim scene="fd-read"></g-anim>
+
+<h2>Look at a live one</h2>
+<p>The kernel view of your machines shows each process's table. Start your receiver on B and leave it waiting:</p>
+<g-cmd m="B">
+$ gosock recv :9000 big.copy
+</g-cmd>
+<p>Look at B's user space: descriptors <b>0 1 2</b> lead to the terminal, and <b>3</b> to the listening socket. Now set <b>Wire</b> to <b>slow</b> and send:</p>
+<g-cmd m="A">
+$ gosock send $B_IP:9000 /tmp/big.bin
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>On B, two slots appeared: <b>4</b>, the connection that <code>Accept</code> returned, and <b>5</b>, the file that <code>os.Create</code> made. The kernel always hands out the <b>lowest free</b> number.</li>
+<li>The file's <b>offset</b> moves as bytes are written. It lives in the open file description, not in the number and not in the file.</li>
+<li>A has its own 3 and 4, and they are different things (a file, a socket). Descriptor numbers mean something only <b>inside one process</b>.</li>
+<li>When a program exits, its table is emptied: every slot is closed for it.</li>
+</ul>
+</div>
+
+<details class="fold">
+<summary>The same thing in simplified kernel C</summary>
+<p>These are the real kernel structures with most fields removed:</p>
+<g-go file="kernel (simplified).c">
+struct files_struct {                 // one per process: the fd table
+    struct file *fd[NR_OPEN];         // fd[3] is "file descriptor 3"
+};
+
+struct file {                         // the open file description
+    loff_t    f_pos;                  // the offset: the next read/write starts here
+    unsigned  f_flags;                // read-only, append, ...
+    const struct file_operations *f_op;   // read, write, close... for THIS kind of object
+    struct inode *f_inode;            // the file (for a socket: the socket's inode)
+};
+
+// read(3, buf, n) in the kernel, roughly:
+//    struct file *f = current->files->fd[3];
+//    return f->f_op->read(f, buf, n, &f->f_pos);
+</g-go>
+<p>Look at the last line. The same <code>read</code> works on a file, a socket and a pipe because each open file description carries its own table of operations (<code>f_op</code>). That is why <code>io.Copy</code> could copy between a file and a connection: to the kernel both are file descriptors.</p>
+</details>

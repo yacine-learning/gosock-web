@@ -1,0 +1,54 @@
+# gosock-web: context for a fresh agent session (read this first)
+
+> This file is the project memory. Keep it current: update **State** whenever the course or the student's progress changes, and commit it with the rest.
+
+## What this project is
+The browser edition of the `gosock` course (repo `yacine-learning/gosock`, the original, which needs two real Linux machines). Same end goal: the student can **explain, with evidence, what the Linux kernel does when a file is sent over TCP**. Here everything runs in one static page: the student writes **real Go** (the official compiler and linker, built as WebAssembly), runs it on **two simulated Linux machines** (A and B), and watches a **live kernel view**. The user is the **student**; I (Claude) am the **teacher** who writes the course and the simulator. Read `README.md` for the layout and how to run it.
+
+## State (update me)
+- **2026-11-14: first version.** Simulated kernel + TCP, shell and tools, real Go toolchain in the browser, bench UI (kernel view, two terminals, editor), behavioural lab checks, and **module 1 "A file crosses the network"** (8 pages: start, nc, go, recv, send, strace, fd, box; 2 code labs).
+- **Verified here:** `node test/kernel.test.mjs` (9 tests) and `node test/e2e.mjs` in headless Chromium (15 tests: every page loads, the `nc` page clicked through, build + compiler errors, the starter code fails every check, the reference solution passes both labs, 7 broken variants are each caught with a useful message, a slow transfer seen in the kernel view, strace counts, reboot).
+- **NOT verified:** GitHub Pages hosting itself, Firefox and Safari, the service worker (offline), the installed-app mode, small screens (the layout is desktop-first; under 980 px it only stacks). The student has not used it yet.
+- **Next:** read the student's notes (they paste them: the Note button keeps notes in their browser and "Copy all my notes" puts them on the clipboard), fix what they report, then write module 2.
+
+## The student (from the original course; still true)
+- Adult employee learning for themselves, **30-60 min per working day**. Good networking background, Go below intermediate, learning Linux kernel and syscalls.
+- Wants **animations** and **little to do per page**, nothing to write outside the app, honesty about what was and was not tested, clarifying questions before big work, quality ("nothing below great"). **Likes it when I name the teachers and courses that inspire a choice.**
+- Wants later: a simplified C view of the kernel's socket structures, and hands-on manipulation of a live socket.
+- Don't pick pronouns from names; use they/them if unknown.
+
+## THE LEAN RULE (every page)
+1. **One idea.** About 300 words, a picture or an animation (`<g-anim>`).
+2. **One thing to run** (`<g-cmd>` blocks, or one `<g-lab>`).
+3. **"What you should notice"**: 2-4 bullets in `<div class="notice">`.
+Allowed extras, at most one of each: a `<g-predict>` (only when being surprised is the lesson), collapsed `<details class="fold">` for reference material. Not allowed: checklists, things to write down, scoring, sessions, timers. A page only builds on pages **before** it: never point ahead, never add meta sections. Every section must have a purpose the reader sees at once.
+
+## How it works (the parts that are easy to get wrong)
+- **Go to kernel bridge.** A Go program compiled for js/wasm cannot make Linux syscalls: Go's `syscall` package calls a JavaScript object named `fs`. `js/proc-worker.js` provides that object inside a worker; each call is a message to the page, where `Machine.sys()` in `js/kernel.js` answers it. A goroutine in a call is blocked until the answer arrives, other goroutines keep running. No SharedArrayBuffer, so no special HTTP headers are needed.
+- **`gosrc/` replaces files of Go's standard library** at toolchain build time (`go build -overlay`): `syscall/net_fake.go` (Linux constant values), `syscall/net_js.go` (Socket, Bind, Listen, Accept, Connect, Getsockname, Setsockopt, Shutdown, Sendfile → kernel), `net/net_fake.go` (TCP over those calls, blocking, IPv4 only, no deadlines), `net/sockopt_fake.go`, `net/tcpsockopt_stub.go`, `net/sendfile_stub.go`, `os/zero_copy_stub.go` (`io.Copy(conn, file)` → `sendfile`). The build script also drops the `Sendfile` stub from `syscall_js.go` and lower-cases the error texts in `tables_js.go` so messages read as on Linux. **After any change in `gosrc/`: `bash tools/build-toolchain.sh`, then commit `toolchain/`.**
+- **Still Go's own, not the kernel's:** `Seek` (Go keeps the offset itself and turns later reads into `pread`), `Dup`, `Pipe` return ENOSYS. The files module needs them: replace `syscall/fs_js.go` then.
+- **Tools are processes too**: every command in `js/tools.js` is `async (ctx)` using only `ctx.sys(...)`, so `strace` and the kernel view see it like a Go program.
+- **TCP** (`kernel.js`): handshake, sequence numbers, windows, send/receive buffers, FIN states, TIME_WAIT (60 s), RST on unread data or no listener, accept queue of backlog+1, SYN retried 4 times. The wire never loses or reorders, so there is no retransmission of data, no congestion control, no Nagle. Add these when a module needs them.
+- **Time** is the browser's clock. "Wire: slow / crawl" delays each packet (`world.speed`). Nothing measures performance.
+- **Lab checks** (`js/checks.js`) build the student's code and run it on **fresh machines of their own**, never the ones on the page; they judge files, exit status and output, and every wait is bounded.
+- **Descriptor numbers** in the simulator: a program starts with 0, 1, 2, so its first file or socket is **3** (real Go has runtime descriptors first; the pages say so only where it matters).
+
+## Differences from real Linux that pages must not hide
+Go's receiver here copies with `read`/`write` (real Go uses `splice`); Go's sockets are blocking (real Go: non-blocking + epoll); `:9000` binds IPv4 `0.0.0.0` (real Go: IPv6 dual-stack); traces have no runtime noise (threads, futex, mmap). The `box` page says the first; say the others when a page shows them.
+
+## Verification routine for anything new
+1. `node test/kernel.test.mjs` and `node test/e2e.mjs` (server on :8765; Chromium + Playwright are preinstalled in the cloud container; `SHOTS=dir` saves screenshots, **look at them**).
+2. New lab: add to `e2e.mjs` that the starter code fails, the solution passes, and 2-4 plausible broken variants are each caught.
+3. Click every command of a new page in order in the test, as the `nc` page test does.
+4. Say honestly in the hand-off what was and was not tested.
+
+## Authoring rules
+- Pages are `course/<dir>/<file>.html`, listed in `course/index.json`. Elements: `<g-cmd m="A|B">` (lines starting with `$ ` get a run button; `&lt;` for `<`), `<g-anim scene>`, `<g-lab id>`, `<g-example project>`, `<g-predict>`, `<g-go>`, `<g-callout type="goal|idea|warn">`, `<g-t k>` (glossary term; add new terms to `course/glossary.json`).
+- Never more than the two terminals. Addresses are `$A_IP` / `$B_IP` (10.0.0.1 / 10.0.0.2), hosts `a` / `b`.
+- A new idea gets a new scene in `js/scenes.js` if a picture helps; the kernel view is the other picture.
+- Test every command before it goes in a page. A command a page needs but the shell lacks: add it to `tools.js` with a kernel test.
+- No Claude attribution in commits, files or pull requests (the student's rule in their other repos).
+- Commit on `main` and push: GitHub Pages serves `main`.
+
+## Roadmap (same as the original, each module about 8 lean pages)
+1 A file crosses the network (**done**). 2 Talking to the kernel directly (raw `syscall` calls, errno, partial writes). 3 Files, offsets and the page cache (needs kernel `lseek`/`dup` and a page-cache model). 4 Sockets from the inside (raw socket lifecycle; simplified `struct sock`; changing a live socket with setsockopt/getsockopt, `ss -tnoemi`). 5 TCP states and queues (`tcpdump`, backlog, TIME_WAIT, half-close). 6 A protocol (framing, checksum). 7 Waiting for I/O (non-blocking, epoll, goroutines). 8 Socket buffers and flow control (needs loss and Nagle in the model). 9 Zero-copy. 10 Capstone: explain the `journey` animation with commands the student ran. The original's "real hardware" module has no place here.

@@ -1,0 +1,33 @@
+<g-callout type="goal"><p>Write the sending half of <code>gosock</code>, then move the 2 MB file from A to B with a tool that is entirely yours.</p></g-callout>
+
+<h2>The spec</h2>
+<table>
+<tr><th>Command</th><th>Behaviour</th></tr>
+<tr><td><code>gosock send ADDR FILE</code></td><td>Open <code>FILE</code> for reading, connect to <code>ADDR</code> over TCP, send every byte of the file, close the connection, print <code>sent N bytes</code> and exit with status 0.</td></tr>
+<tr><td>Errors</td><td>Returned from <code>send</code>, printed by <code>main</code> as <code>gosock: ...</code>, exit status 1. <b>Open the file before you connect</b>: a missing file must not leave a half-made connection behind.</td></tr>
+</table>
+
+<p>The shape is the mirror image of <code>recv</code>, in the same file. Reference: <a href="https://pkg.go.dev/os#Open" target="_blank" rel="noopener">os.Open</a>, <a href="https://pkg.go.dev/net#Dial" target="_blank" rel="noopener">net.Dial</a>, <a href="https://pkg.go.dev/io#Copy" target="_blank" rel="noopener">io.Copy</a>.</p>
+
+<g-lab id="send"></g-lab>
+
+<h2>The real thing</h2>
+<p>Your receiver on B, your sender on A, and the file that <code>nc</code> carried two pages ago:</p>
+<g-cmd m="B">
+$ gosock recv :9000 big.copy
+</g-cmd>
+<g-cmd m="A">
+$ gosock send $B_IP:9000 /tmp/big.bin
+$ sha256sum /tmp/big.bin
+</g-cmd>
+<g-cmd m="B">
+$ sha256sum big.copy
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>Same fingerprint on both machines, and both programs exited by themselves: closing the connection is what <code>nc</code> needed <code>-N</code> for.</li>
+<li>Set <b>Wire</b> to <b>slow</b> (top right) and run the transfer again: you can watch the send buffer on A and the receive buffer on B fill and drain while segments cross the wire.</li>
+</ul>
+</div>

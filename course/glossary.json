@@ -1,0 +1,77 @@
+[
+ {
+  "k": "syscall",
+  "term": "system call (syscall)",
+  "short": "A request from a program to the kernel: the only way user-space code can read a file, send a packet or ask for memory."
+ },
+ {
+  "k": "kernel",
+  "term": "kernel",
+  "short": "The core of the operating system: it owns the hardware, the memory, the files and the network stack, and runs with full CPU privileges."
+ },
+ {
+  "k": "user-space",
+  "term": "user space / kernel space",
+  "short": "Two worlds enforced by the CPU: your program lives in user space and can only compute; the kernel lives in kernel space and can touch everything."
+ },
+ {
+  "k": "fd",
+  "term": "file descriptor (fd)",
+  "short": "A small non-negative integer a process uses to refer to something it has opened: a file, a socket, a pipe, a terminal. It is an index into the process's own table in the kernel."
+ },
+ {
+  "k": "ofd",
+  "term": "open file description",
+  "short": "The kernel object created by one <code>open</code>: it holds the <b>offset</b> and the flags. A file descriptor points to it; <code>dup</code> and <code>fork</code> make several descriptors point to the same one."
+ },
+ {
+  "k": "errno",
+  "term": "errno",
+  "short": "The error code a failed syscall reports: <code>-1</code> plus a number with a name such as <code>ENOENT</code> (no such file) or <code>EAGAIN</code> (try again later)."
+ },
+ {
+  "k": "eof",
+  "term": "end of file (EOF)",
+  "short": "What a reader sees when no more data will ever come. For a file: the end. For a TCP connection: the peer closed (or shut down) its sending side. <code>read</code> returns 0."
+ },
+ {
+  "k": "socket",
+  "term": "socket",
+  "short": "A kernel object that is one end of a communication channel, reached through a file descriptor. For TCP: one end of a connection (or a listening end that accepts connections)."
+ },
+ {
+  "k": "tcp",
+  "term": "TCP",
+  "short": "The reliable, ordered byte-stream protocol on top of IP: it sets up a connection (3-way handshake), numbers bytes, retransmits losses and controls the sending rate."
+ },
+ {
+  "k": "port",
+  "term": "port",
+  "short": "A 16-bit number that tells the kernel which socket on a machine should receive a packet. Ports below 1024 need privileges to listen on."
+ },
+ {
+  "k": "strace",
+  "term": "strace",
+  "short": "A tool that prints every syscall a program makes, with its arguments and result. The main window into the kernel's front door."
+ },
+ {
+  "k": "sendfile",
+  "term": "sendfile",
+  "short": "A syscall that copies bytes from one file descriptor to another entirely inside the kernel, so the data never enters your program's memory."
+ },
+ {
+  "k": "sha256",
+  "term": "hash (SHA-256)",
+  "short": "A fixed-size fingerprint of a file's bytes. Equal fingerprints mean equal bytes, for all practical purposes."
+ },
+ {
+  "k": "io-reader",
+  "term": "io.Reader / io.Writer",
+  "short": "Go interfaces for \"something you can read bytes from\" and \"something you can write bytes to\". Files, connections, pipes and standard input/output all implement them."
+ },
+ {
+  "k": "offset",
+  "term": "file offset",
+  "short": "The position in an open file where the next <code>read</code> or <code>write</code> starts. It is stored in the open file description, not in the file and not in the descriptor."
+ }
+]

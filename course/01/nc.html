@@ -1,0 +1,50 @@
+<g-callout type="goal"><p>Send a 2 MB file from A to B with <code>nc</code>, prove it arrived intact, and meet your first real networking surprise.</p></g-callout>
+
+<p><code>nc</code> (netcat) opens or accepts one <g-t k="tcp">TCP</g-t> connection and joins it to its own input and output. With shell redirections (<code>&gt;</code> and <code>&lt;</code>) that is a file transfer. <code>sha256sum</code> prints a <g-t k="sha256">fingerprint</g-t> of a file: same fingerprint, same bytes.</p>
+
+<g-cmd m="A">
+$ sha256sum /tmp/big.bin
+</g-cmd>
+
+<g-predict id="p1" correct="b">
+  <g-q>B will run <code>nc -l 9000 &gt; in.bin</code> (wait for a connection, store what arrives). A will run <code>nc $B_IP 9000 &lt; /tmp/big.bin</code> (connect, send the file). A's <code>nc</code> reads the last byte of the file and sends it. What happens next?</g-q>
+  <g-o k="a">Both <code>nc</code> commands exit by themselves and the file is complete.</g-o>
+  <g-o k="b">The whole file arrives, but at least one <code>nc</code> never exits.</g-o>
+  <g-o k="c">Only part of the file arrives, because 2 MB is more than one connection carries.</g-o>
+  <g-o k="d">A's <code>nc</code> exits with an error when it runs out of file.</g-o>
+  <g-why><p>The file arrives complete, but nothing tells the receiver that it has ended. Run it, then watch the animation at the bottom.</p></g-why>
+</g-predict>
+
+<p>B waits for a connection:</p>
+<g-cmd m="B">
+$ nc -l 9000 > in.bin
+</g-cmd>
+<p>A sends the file. <code>timeout 5</code> kills <code>nc</code> after 5 seconds in case it does not stop; exit status <code>0</code> means it finished by itself, <code>124</code> means <code>timeout</code> had to kill it:</p>
+<g-cmd m="A">
+$ timeout 5 nc $B_IP 9000 < /tmp/big.bin; echo "exit $?"
+</g-cmd>
+<p>Is the file on B complete?</p>
+<g-cmd m="B">
+$ sha256sum in.bin
+</g-cmd>
+<p>Now the fix: <code>-N</code> makes <code>nc</code> shut down its sending side when its input ends.</p>
+<g-cmd m="B">
+$ nc -l 9000 > in2.bin
+</g-cmd>
+<g-cmd m="A">
+$ nc -N $B_IP 9000 < /tmp/big.bin; echo "exit $?"
+</g-cmd>
+<g-cmd m="B">
+$ sha256sum in2.bin
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>The first run ended with status 124, yet the fingerprint on B matches the original. The data was never the problem. The <b>end</b> was.</li>
+<li>The second run ended by itself with status 0, on both machines.</li>
+<li>While <code>nc -l</code> waits, B's kernel shows a socket in state <b>LISTEN</b>. It is gone when <code>nc</code> exits.</li>
+</ul>
+</div>
+
+<g-anim scene="eof"></g-anim>

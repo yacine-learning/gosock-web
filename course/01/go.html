@@ -1,0 +1,60 @@
+<p class="lede">Just enough Go to write your first program, and the one idea that makes it short: <b>readers and writers</b>. Everything below is used in the next page.</p>
+
+<h2>The shape of a program</h2>
+<g-go file="shape.go">
+package main      // an executable is always package main
+
+import (
+    "fmt"         // every package you use must be imported...
+    "os"          // ...and every import must be used
+)
+
+func main() {     // the program starts here
+    fmt.Println("hello", os.Args)   // os.Args: the command line
+}
+</g-go>
+
+<h2>Errors are values</h2>
+<p>Go has no exceptions. A function that can fail returns its result <b>and an <code>error</code></b>. The caller checks it right away. You will write this shape dozens of times:</p>
+<g-go>
+f, err := os.Open(path)   // := declares f and err
+if err != nil {           // nil means "no error"
+    return err            // pass it up to the caller
+}
+defer f.Close()           // runs when this function returns
+</g-go>
+<p><code>defer</code> does not close the file now. It <b>schedules</b> the call for the moment the surrounding function returns. Each thing you open gets a <code>defer Close()</code> on the next line.</p>
+
+<h2>Readers and writers</h2>
+<table>
+<tr><th>Interface</th><th>Means</th><th>Implemented by</th></tr>
+<tr><td><g-t k="io-reader"><code>io.Reader</code></g-t></td><td>"something you can read bytes from"</td><td>files, network connections, standard input…</td></tr>
+<tr><td><code>io.Writer</code></td><td>"something you can write bytes to"</td><td>files, network connections, standard output…</td></tr>
+</table>
+<p><code>io.Copy(dst, src)</code> copies from any reader to any writer until the reader ends, and returns how many bytes it moved and an error. It does not care what they are. Here is a 25-line program built on that line:</p>
+
+<g-example project="copy"><p>Open it, read it, press <b>Build</b>. Building installs the command <code>copy</code> on both machines. Then run it twice, once fed by a pipe and once given a file:</p></g-example>
+<g-cmd m="A">
+$ echo "from a pipe" | copy
+$ copy /etc/hostname
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>The same <code>io.Copy</code> line served a pipe and a file. In the next page one end is a <b>file</b> and the other a <b>network connection</b>, and the line is the same.</li>
+<li>Build is the real Go compiler. Break the program on purpose (delete an import, or a <code>)</code>) and build again: the message gives the line and column, and clicking it takes you there.</li>
+</ul>
+</div>
+
+<details class="fold">
+<summary>Compiler messages you will meet</summary>
+<table>
+<tr><th>Message</th><th>Means</th></tr>
+<tr><td><code>"net" imported and not used</code></td><td>you imported a package you never call: delete the import, or use it</td></tr>
+<tr><td><code>undefined: net</code></td><td>you call <code>net.Something</code> without importing <code>net</code></td></tr>
+<tr><td><code>declared and not used: n</code></td><td>a variable you assigned is never read</td></tr>
+<tr><td><code>missing return</code></td><td>a function with a result has a path that ends without returning</td></tr>
+</table>
+<p>Fix the first message first; later ones are often consequences. For more Go, the <a href="https://go.dev/tour/" target="_blank" rel="noopener">Tour of Go</a> covers the same ground.</p>
+</details>

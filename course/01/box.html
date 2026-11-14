@@ -1,0 +1,37 @@
+<g-callout type="goal"><p>Trace your own <code>gosock</code> on both machines, and find out what the kernel was really asked.</p></g-callout>
+
+<p>You wrote about 40 lines. Record what they asked of the kernel, on both ends (<code>-o</code> writes the trace to a file):</p>
+<g-cmd m="B">
+$ strace -o recv.trace gosock recv :9000 in.bin
+</g-cmd>
+<g-cmd m="A">
+$ strace -o send.trace gosock send $B_IP:9000 /tmp/big.bin
+</g-cmd>
+
+<h2>One question</h2>
+<p>Your sender is an <code>io.Copy</code> over 2 MB. How many <code>read</code> and <code>write</code> calls carried the file's bytes? Count them on A (<code>grep -c</code> counts matching lines), then do the same on B:</p>
+<g-cmd m="A">
+$ grep -c 'read(' send.trace
+$ grep -c 'write(' send.trace
+$ grep sendfile send.trace
+</g-cmd>
+<g-cmd m="B">
+$ grep -c 'read(' recv.trace
+$ grep -c 'write(' recv.trace
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>On A: no <code>read</code> at all, and a single <code>write</code>, the one that printed <code>sent 2097152 bytes</code>. The file travelled in <code>sendfile(4, 3, …)</code>: "copy into descriptor 4, the socket, from descriptor 3, the file".</li>
+<li>You never wrote <code>sendfile</code>. Go noticed that the source is a file and the destination a TCP connection, and asked the kernel for a shortcut.</li>
+<li>On B: dozens of <code>read</code> and <code>write</code> pairs. The same <code>io.Copy</code> line, the other way round, moved every chunk through your program.</li>
+</ul>
+</div>
+
+<g-anim scene="copy-paths"></g-anim>
+
+<details class="fold">
+<summary>On a real Linux machine</summary>
+<p>The sender's trace looks like this one, with extra lines from Go's runtime (threads, timers) and several <code>sendfile</code> calls instead of one. The receiver differs: there Go also finds a shortcut, a pair of <code>splice</code> calls through a pipe. This simulator's receiver takes the plain road, which is the one worth understanding first.</p>
+</details>

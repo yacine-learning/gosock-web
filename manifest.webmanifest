@@ -1,0 +1,10 @@
+{
+  "name": "gosock: what Linux does when a file crosses the network",
+  "short_name": "gosock",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#080c14",
+  "theme_color": "#080c14",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

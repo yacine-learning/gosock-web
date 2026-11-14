@@ -1,0 +1,33 @@
+<g-callout type="goal"><p>Write the receiving half of <code>gosock</code>: wait for a connection and store what arrives in a file. It is what <code>nc -l 9000 &gt; file</code> did, as a program of your own.</p></g-callout>
+
+<h2>The spec</h2>
+<table>
+<tr><th>Command</th><th>Behaviour</th></tr>
+<tr><td><code>gosock recv ADDR DEST</code></td><td>Listen for TCP on <code>ADDR</code> (like <code>:9000</code>, meaning port 9000 on every address of the machine). Accept <b>one</b> connection. Write every byte that arrives into the file <code>DEST</code>. When the sender closes the connection, print <code>received N bytes</code> and exit with status 0.</td></tr>
+<tr><td>Errors</td><td>Any failure is <b>returned</b> from <code>recv</code> as an error; the given <code>main</code> prints it as <code>gosock: ...</code> and exits with status 1.</td></tr>
+</table>
+
+<p><code>main</code> is written. You write the body of <code>recv</code>. The comments name the Go function to use; <b>you</b> write the statements. Check every error, and <code>defer</code> every close. Reference: <a href="https://pkg.go.dev/net#Listen" target="_blank" rel="noopener">net.Listen</a>, <a href="https://pkg.go.dev/net#Listener" target="_blank" rel="noopener">Accept</a>, <a href="https://pkg.go.dev/os#Create" target="_blank" rel="noopener">os.Create</a>, <a href="https://pkg.go.dev/io#Copy" target="_blank" rel="noopener">io.Copy</a>.</p>
+
+<g-lab id="recv"></g-lab>
+
+<h2>Run it by hand once</h2>
+<p>The checks ran your program on machines of their own. Now run it on yours: B receives, A sends one line with <code>nc</code>.</p>
+<g-cmd m="B">
+$ gosock recv :9000 got.txt
+</g-cmd>
+<g-cmd m="A">
+$ echo "hello gosock" | nc -N $B_IP 9000
+</g-cmd>
+<g-cmd m="B">
+$ cat got.txt
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>While it waits, your program appears in B's user space, <b>in the kernel</b> inside a call named <code>accept</code>, and B's kernel holds a socket in state LISTEN.</li>
+<li><code>received 13 bytes</code>: twelve characters and the end of line.</li>
+<li>Your program exited by itself because <code>nc -N</code> announced the end. That is the lesson of the previous lab, seen from the receiving side.</li>
+</ul>
+</div>

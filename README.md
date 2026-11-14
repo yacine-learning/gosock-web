@@ -1,0 +1,57 @@
+# gosock, in the browser
+
+A course on what the Linux kernel does when a file is sent over TCP. You write a file-transfer tool in **real Go**, run it on **two simulated Linux machines**, and watch their kernels work: descriptors, sockets, buffers, segments on the wire.
+
+Everything runs in the page. There is no backend and no build step.
+
+- **Real:** the Go compiler and linker (the official ones, compiled to WebAssembly), your program, its goroutines, the standard library.
+- **Simulated:** the two machines and their kernels (files, processes, descriptor tables, sockets, a small TCP), and the commands (`nc`, `strace`, `ss`, `cat`…). It is a model written for this course, not Linux.
+
+Module 1, "A file crosses the network", is written (8 pages, 2 code labs). Progress, code and notes are saved in the browser.
+
+## Run it
+
+Any static file server works:
+
+```
+python3 -m http.server 8765
+```
+
+then open http://localhost:8765/. For GitHub Pages: Settings → Pages → deploy from the `main` branch, folder `/`.
+
+The first build downloads the toolchain (18 MB) and keeps it in the browser's cache storage.
+
+## Layout
+
+| Path | What |
+|---|---|
+| `index.html`, `css/` | the page: lesson on the left, bench on the right |
+| `js/kernel.js` | the simulated kernel: files, processes, descriptors, sockets, TCP, the wire, strace formatting |
+| `js/tools.js` | the shell and the commands, each one a program that only uses system calls |
+| `js/proc-worker.js`, `js/gorun.js` | one compiled Go program = one worker; its system calls are answered by the kernel |
+| `js/toolchain-worker.js`, `js/toolchain.js` | the Go compiler and linker, in a worker |
+| `js/kview.js`, `js/term.js`, `js/editor.js` | live kernel view, terminals, code editor |
+| `js/checks.js` | the code labs and their behavioural checks |
+| `js/components.js`, `js/scenes.js` | page elements and step-by-step animations |
+| `course/` | `index.json`, pages (`01/*.html`), starter code and reference solutions |
+| `gosrc/` | the files that replace Go's own for js/wasm, so `net`, `os` and `syscall` talk to the simulated kernel |
+| `toolchain/` | built by `tools/build-toolchain.sh`: compiler, linker, standard library |
+| `test/` | `kernel.test.mjs` (Node), `e2e.mjs` (Chromium through Playwright) |
+
+## Tests
+
+```
+node test/kernel.test.mjs          # kernel, TCP, shell, tools
+python3 -m http.server 8765 &      # then, with Playwright and Chromium installed:
+node test/e2e.mjs                  # every page, the labs, broken variants of the solutions
+```
+
+## Rebuilding the toolchain
+
+Needed after changing anything in `gosrc/` or the list of packages. Requires Go 1.24.7.
+
+```
+bash tools/build-toolchain.sh
+```
+
+Go is distributed under a BSD-style licence (see https://go.dev/LICENSE); `js/wasm_exec.js` and the files in `toolchain/` are built from it, and the files in `gosrc/` replace files of its standard library.
