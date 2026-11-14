@@ -249,6 +249,34 @@ test('IDE: search, several cursors, comment toggle, bracket closing, undo', asyn
   await ideDoc('package main\n\nfunc main() {\n\t@@\n}\n'); await page.keyboard.type('x := []int{1, 2'); assert.match(await docText(), /x := \[\]int\{1, 2\}\n/);
   await page.keyboard.press('Control+/'); assert.match(await docText(), /\/\/ x := /);
 });
+test('page layout: animations fold (one remembered choice), fill the window, stop at the last step; previous, done, focus', async () => {
+  await open('#/p/fd');
+  const g = page.locator('g-anim').first();
+  assert.equal(await g.locator('.an-body').isVisible(), false, 'animations start folded');
+  assert.equal(await page.locator('.know li').count() >= 2, true);
+  assert.equal(await page.locator('details.fold.more').first().evaluate((d) => d.open), false);
+  assert.equal(await page.locator('details.fold.kc').count(), 1);
+  await g.locator('.an-fold').click(); assert.equal(await g.locator('.an-body').isVisible(), true);
+  const n = await g.locator('.an-dots i').count();
+  for (let i = 1; i < n; i++) await g.locator('[data-a="next"]').click();
+  assert.equal(await g.locator('.no').innerText(), `${n}/${n}`); assert.equal(await g.locator('[data-a="next"]').isDisabled(), true);
+  assert.equal(await g.locator('[data-a="prev"]').isDisabled(), false);
+  await g.locator('[data-a="full"]').click(); assert.equal(await g.evaluate((e) => getComputedStyle(e).position), 'fixed');
+  await page.keyboard.press('Escape'); assert.equal(await g.evaluate((e) => getComputedStyle(e).position), 'static');
+  await open('#/p/box'); assert.equal(await page.locator('g-anim .an-body').first().isVisible(), true, 'opening one opens them all, on later pages too');
+  await page.locator('g-anim .an-fold').first().click();
+  await open('#/p/strace'); assert.equal(await page.locator('g-anim .an-body').first().isVisible(), false);
+  // footer: Previous, then Mark as done right before Next
+  const foot = await page.locator('.page-foot').innerText(); assert.match(foot, /Previous[\s\S]*(Mark as done|Done)[\s\S]*Next: What is a file descriptor/);
+  await page.locator('.page-foot a', { hasText: 'Previous' }).click(); await page.waitForFunction(() => location.hash === '#/p/send');
+  // focus: the course alone, then the bench alone, and back
+  await page.locator('#focusPage').click(); assert.equal(await page.locator('#bench').isVisible(), false);
+  assert.ok((await page.locator('.page-col').boundingBox()).width > 1400);
+  await page.locator('#focusPage').click(); await page.locator('#focusBench').click(); assert.equal(await page.locator('.page-col').isVisible(), false);
+  assert.ok((await page.locator('#bench').boundingBox()).width > 1400);
+  await page.locator('#focusBench').click(); assert.equal(await page.locator('.page-col').isVisible(), true);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollHeight), 900, 'nothing below the app');
+});
 test('reboot gives fresh machines and keeps built programs', async () => {
   await page.locator('.tab[data-tab="machines"]').click();
   await page.locator('#reset').click();

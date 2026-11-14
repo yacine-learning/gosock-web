@@ -71,8 +71,25 @@
 /* ───────── animation player ───────── */
 g-anim { display: block; border-radius: 20px; overflow: hidden; background: linear-gradient(180deg, var(--surface), var(--surface-2)); border: 1px solid var(--line-2); box-shadow: var(--shadow-lg); }
 .an-h { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+.an-h { padding: 6px 10px 6px 8px; }
+.an-fold { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 6px 8px; border: 0; background: none; border-radius: 10px; text-align: left; }
+.an-fold:hover { background: var(--surface-2); }
+.an-fold svg { width: 18px; height: 18px; flex: none; color: var(--muted); transition: transform .2s; }
+g-anim.open .an-fold svg { transform: rotate(90deg); }
 .an-h .ttl { font: 700 .98rem var(--display); letter-spacing: -.01em; }
-.an-h .tag { margin-left: auto; font: 700 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 4px 10px; border-radius: 99px; }
+.an-n { margin-left: auto; font: 700 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 4px 10px; border-radius: 99px; white-space: nowrap; }
+.an-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--text-2); flex: none; }
+.an-icon:hover { border-color: var(--accent); color: var(--text); }
+.an-icon svg { width: 17px; height: 17px; }
+g-anim:not(.open) .an-body { display: none; }
+g-anim:not(.open) .an-h { border-bottom: 0; }
+g-anim.full { position: fixed; inset: 0; z-index: 90; margin: 0 !important; border-radius: 0; display: flex; flex-direction: column; }
+g-anim.full .an-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+g-anim.full .an-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+g-anim.full .an-stage svg { max-height: 100%; height: 100%; }
+g-anim.full .an-cap { font-size: 1.1rem; }
+.an-ctl button:disabled { opacity: .35; cursor: default; transform: none; border-color: var(--line-2); }
+.an-h .tag-old { margin-left: auto; font: 700 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 4px 10px; border-radius: 99px; }
 .an-stage { padding: 6px 10px 0; background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 22px 22px; }
 .an-stage svg { display: block; width: 100%; height: auto; max-height: 560px; overflow: visible; }
 .an-cap { display: flex; gap: 14px; align-items: flex-start; margin: 0 16px 14px; padding: 14px 18px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); min-height: 76px; }

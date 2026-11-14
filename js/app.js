@@ -39,6 +39,7 @@ S.run = (m, cmd) => {
 
 // ── bench tabs, wire speed, split ──
 function tab(name) {
+  if ($('#app').classList.contains('focus-page') && S.page) S.focus?.(null);      // asked for the bench: show it
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === name));
   document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === 'pane-' + name));
   $('#machineTools').style.visibility = name === 'machines' ? '' : 'hidden';
@@ -151,9 +152,11 @@ const drawer = (open) => { $('#side').classList.toggle('open', open); $('#scrim'
 $('#menu').addEventListener('click', () => drawer(true)); $('#scrim').addEventListener('click', () => drawer(false));
 $('#side').addEventListener('click', (e) => { if (e.target.closest('a')) drawer(false); });
 function foot(el, id) {
-  const all = items(), i = all.findIndex((x) => x.id === id), next = all[i + 1], it = all[i];
-  el.innerHTML = (S.store.done[id] ? '<span class="done-pill">✓ Done</span>' : it.lab ? '<span class="meta">This page is done when the checks pass.</span>' : '<button class="btn" data-a="done">Mark as done</button>') +
-    `<span class="sp"></span>` + (next ? `<a class="btn primary" href="#/p/${next.id}">Next: ${esc(next.title)} ${ICON.arrow.replace('<svg', '<svg width="16" height="16"')}</a>` : '<span class="meta">End of what is written so far.</span>');
+  const all = items(), i = all.findIndex((x) => x.id === id), prev = all[i - 1], next = all[i + 1], it = all[i];
+  const arrow = (flip) => ICON.arrow.replace('<svg', `<svg width="16" height="16"${flip ? ' style="transform:scaleX(-1)"' : ''}`);
+  const done = S.store.done[id] ? '<span class="done-pill">✓ Done</span>' : it.lab ? '<span class="meta">Done when the checks pass.</span>' : it.quiz ? '<span class="meta">Done when you finish the questions.</span>' : '<button class="btn" data-a="done">Mark as done</button>';
+  el.innerHTML = (prev ? `<a class="btn ghost" href="#/p/${prev.id}" title="${esc(prev.title)}">${arrow(true)} Previous</a>` : '<a class="btn ghost" href="#/">' + arrow(true) + ' Overview</a>') +
+    `<span class="sp"></span>${done}` + (next ? `<a class="btn primary" href="#/p/${next.id}">Next: ${esc(next.title)} ${arrow()}</a>` : '<span class="meta">End of what is written so far.</span>');
   el.querySelector('[data-a="done"]')?.addEventListener('click', () => S.markDone(id));
 }
 async function route() {
@@ -212,6 +215,22 @@ $('#noteBtn').addEventListener('click', () => {
     else if (a === 'copy') { const md = S.store.notes.map((n) => `## ${n.when} · ${n.title}\n\n${n.quote ? '> ' + n.quote + '\n\n' : ''}${n.text}\n`).join('\n'); try { await navigator.clipboard.writeText(md); S.toast(`${S.store.notes.length} notes copied.`); } catch (err) { S.toast('The browser refused the clipboard.'); } }
   });
 });
+
+// ── focus: the course alone, or the bench alone ──
+{
+  const app = $('#app');
+  const setFocus = (f) => {
+    app.classList.toggle('focus-page', f === 'page'); app.classList.toggle('focus-bench', f === 'bench');
+    $('#focusPage').innerHTML = f === 'page' ? ICON.shrink : ICON.expand; $('#focusPage').title = f === 'page' ? 'Show the machines and the code again' : 'Course only (full width)';
+    $('#focusBench').innerHTML = f === 'bench' ? ICON.shrink : ICON.expand; $('#focusBench').title = f === 'bench' ? 'Show the course again' : 'Machines and code only (full width)';
+    editor?.paint(); dispatchEvent(new Event('resize'));
+  };
+  $('#focusPage').addEventListener('click', () => setFocus(app.classList.contains('focus-page') ? null : 'page'));
+  $('#focusBench').addEventListener('click', () => setFocus(app.classList.contains('focus-bench') ? null : 'bench'));
+  S.focus = setFocus; setFocus(null);
+  // a command run from the course needs the machines on screen
+  const run = S.run; S.run = (m, cmd) => { if (app.classList.contains('focus-page')) setFocus(null); return run(m, cmd); };
+}
 
 // ── theme ──
 {

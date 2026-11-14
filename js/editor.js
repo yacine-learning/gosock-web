@@ -351,7 +351,7 @@ export class Editor {
       { tag: t.invalid, color: '#ffffff' },
     ]);
     const theme = EditorView.theme({
-      '&': { height: '100%', backgroundColor: '#282c34', color: '#abb2bf', fontSize: '14px' },
+      '&.cm-editor': { height: '100%', backgroundColor: '#282c34', color: '#abb2bf', fontSize: '14px' },   // not '&': the tooltip box in <body> carries the theme class too
       '.cm-scroller': { fontFamily: 'var(--mono)', lineHeight: '1.6' },
       '.cm-content': { caretColor: '#528bff', padding: '4px 0' },
       '.cm-cursor, .cm-dropCursor': { borderLeft: '2px solid #528bff' },

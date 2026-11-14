@@ -22,6 +22,10 @@ kbd { border-bottom-width: 2px; }
 .crumbs b { color: var(--text-2); font-weight: 600; }
 .page-scroll { flex: 1; overflow-y: auto; min-height: 0; }
 .view { max-width: 760px; margin: 0 auto; padding: 26px 30px 90px; animation: viewIn .35s; }
+.app.focus-page { grid-template-columns: minmax(0, 1fr); } .app.focus-page .split, .app.focus-page .bench { display: none; }
+.app.focus-bench { grid-template-columns: minmax(0, 1fr); } .app.focus-bench .page-col, .app.focus-bench .split { display: none; }
+.app.focus-page .view { max-width: 860px; }
+.icon-btn svg { width: 18px; height: 18px; }
 .split { cursor: col-resize; background: var(--line); transition: background .15s; }
 .split:hover, .split.drag { background: var(--accent); }
 
@@ -40,6 +44,16 @@ kbd { border-bottom-width: 2px; }
 .view th { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
 .notice { margin: 26px 0 8px; padding: 4px 18px 8px; border-left: 3px solid var(--net); background: color-mix(in srgb, var(--net) 6%, transparent); border-radius: 0 12px 12px 0; }
 .notice h2 { margin-top: 12px; font-size: 1.02rem; }
+/* the page layout: what you should know (open), the diagram, more detail and kernel C (folded), run, notice */
+.know { margin: 18px 0 20px; padding: 6px 20px 10px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 7%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); }
+.know > .k { display: block; margin-top: 10px; font: 700 11.5px var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+.know ul { margin: 6px 0 4px; } .know li { color: var(--text); margin: 7px 0; }
+.view h2.topic { margin-top: 38px; }
+.view h2.run { margin-top: 30px; }
+details.fold.more > summary::before, details.fold.kc > summary::before { font: 700 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; padding: 3px 8px; border-radius: 99px; margin-right: 10px; vertical-align: 1px; }
+details.fold.more > summary::before { content: "more"; color: var(--text-2); background: var(--surface-3); }
+details.fold.kc > summary::before { content: "kernel C"; color: var(--kernel); background: color-mix(in srgb, var(--kernel) 14%, transparent); }
+details.fold[open] { padding-bottom: 10px; }
 details.fold { margin: 18px 0; border: 1px solid var(--line); border-radius: 12px; padding: 4px 16px; background: var(--surface); }
 details.fold summary { cursor: pointer; padding: 8px 0; color: var(--text-2); font-weight: 600; }
 g-anim { margin: 20px 0; }
@@ -58,6 +72,8 @@ g-t { border-bottom: 1px dashed var(--muted); cursor: help; position: relative; 
 .btn:disabled { opacity: .55; cursor: default; }
 .page-foot { display: flex; align-items: center; gap: 12px; margin-top: 44px; padding-top: 22px; border-top: 1px solid var(--line); }
 .page-foot .sp { flex: 1; }
+.page-foot .btn { white-space: nowrap; }
+.page-foot .btn.primary { max-width: 60%; overflow: hidden; text-overflow: ellipsis; display: inline-flex; }
 .done-pill { color: var(--net); font-weight: 700; font-size: 14px; }
 
 /* callouts, commands, code listings */

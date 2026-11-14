@@ -1,11 +1,27 @@
-<p class="lede">By the end of this course you will be able to explain, with commands you ran yourself, what the Linux kernel does when a program sends a file to another machine.</p>
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>At the end you will explain, with commands you ran yourself, what the Linux kernel does when a file is sent to another machine.</li>
+<li>The right half of the page is your lab: two Linux machines, <b>A</b> and <b>B</b>, each with its own <g-t k="kernel">kernel</g-t>, files and terminal.</li>
+<li>A program cannot touch a disk or a network card. It <b>asks the kernel</b>, through a <g-t k="syscall">system call</g-t>.</li>
+</ul></div>
 
-<h2>The whole trip</h2>
-<p>This is what happens when a file is sent. You do not need to understand it yet. Press play once, and come back to it whenever you feel lost: every lesson explains one part of it.</p>
-<g-anim scene="journey"></g-anim>
+<g-anim scene="journey" title="The whole trip (come back to it whenever you feel lost)"></g-anim>
+<g-anim scene="syscall-life"></g-anim>
 
-<h2>Your two machines</h2>
-<p>The right half of this page is your lab: two Linux machines, <b>A</b> and <b>B</b>, joined by one cable. Each has its own <g-t k="kernel">kernel</g-t>, its own files and its own terminal. Type in a terminal, or press <b>run</b> next to a command here:</p>
+<details class="fold more"><summary>What a system call is, and the whole trip</summary>
+<p>Your program runs in <b>user space</b>: it can only touch its own memory. Everything else (files, the network, other programs) belongs to the kernel. A system call is the one door between the two: the program puts a number and some arguments in CPU registers, executes a special instruction, and the CPU switches to kernel mode. The kernel does the work and returns a number: a result, or a negative error code.</p>
+<p>The first animation is the whole course in one picture. You do not need to understand it yet; every lesson explains one part of it.</p>
+</details>
+<details class="fold more"><summary>What is real here, and what is simulated</summary>
+<p><b>Real:</b> the Go compiler (the official one, running in your browser) and the programs you will write with it.</p>
+<p><b>Simulated:</b> the two machines. Their kernels are a model written for this course: files, descriptors, sockets and TCP behave like Linux in the ways the lessons use. The commands (<code>nc</code>, <code>strace</code>, <code>ss</code>…) are small versions of the real ones, with the options the course needs.</p>
+</details>
+<details class="fold more"><summary>Where the ideas come from</summary>
+<p>I borrowed ideas, not material, from teachers whose courses are worth knowing: <b>Stanford CS144</b> (Keith Winstein, Nick McKeown) for building one real thing, judged by tests; <b>MIT 6.S081</b> (Frans Kaashoek, Robert Morris) for looking inside the kernel; <b>CMU 15-213</b> (Randal Bryant, David O'Hallaron) for debugging with nothing but tools; <b>OSTEP</b> (Remzi and Andrea Arpaci-Dusseau) for starting from the problem; <b>Eric Mazur</b> (Harvard) for guessing before seeing; <b>Kurose and Ross</b> for learning networking top-down; <b>Harvard CS50</b> (David Malan) for showing a bug on purpose; <b>Jakob Nielsen</b> for this page layout: the essentials first, the rest when you ask for it.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<p>Type in a terminal, or press <b>run</b>:</p>
 <g-cmd m="A">
 $ hostname
 $ ls -l /tmp
@@ -16,25 +32,11 @@ $ ls -l /tmp
 $ ping -c 2 $A_IP
 </g-cmd>
 
-<h2>Programs ask, the kernel does</h2>
-<p>A program cannot touch a disk or a network card. It must <b>ask the kernel</b>, through a <g-t k="syscall">system call</g-t>. Watch one:</p>
-<g-anim scene="syscall-life"></g-anim>
-
 <div class="notice">
 <h2>What you should notice</h2>
 <ul>
-<li>A and B really are separate: <code>/tmp/big.bin</code> exists on A and not on B. Getting it across is the job of this module.</li>
-<li>Above the terminals, each machine shows its <b>user space</b> (running programs) and its <b>kernel</b> (sockets). Both are empty for now: a command like <code>ls</code> is gone before you can see it.</li>
-<li><code>$A_IP</code> and <code>$B_IP</code> hold the machines' addresses, so no page ever makes you type one.</li>
+<li><code>/tmp/big.bin</code> exists on A and not on B. Getting it across is the job of this module.</li>
+<li>Above the terminals each machine shows its <b>user space</b> (programs) and its <b>kernel</b> (sockets). Both stay empty: <code>ls</code> is gone before you can see it.</li>
+<li><code>$A_IP</code> and <code>$B_IP</code> hold the addresses, so you never type one.</li>
 </ul>
 </div>
-
-<details class="fold">
-<summary>What is real here, and what is simulated</summary>
-<p><b>Real:</b> the Go compiler (the official one, running in your browser) and the programs you will write with it.</p>
-<p><b>Simulated:</b> the two machines. Their kernels are a model written for this course: files, descriptors, sockets and TCP behave like Linux in the ways the lessons use. The commands (<code>nc</code>, <code>strace</code>, <code>ss</code>…) are small versions of the real ones, with the options the course needs.</p>
-</details>
-<details class="fold">
-<summary>Where the ideas come from</summary>
-<p>I borrowed ideas, not material, from teachers whose courses are worth knowing: <b>Stanford CS144</b> (Keith Winstein, Nick McKeown) for building one real thing, judged by tests; <b>MIT 6.S081</b> (Frans Kaashoek, Robert Morris) for looking inside the kernel; <b>CMU 15-213</b> (Randal Bryant, David O'Hallaron) for debugging with nothing but tools; <b>OSTEP</b> (Remzi and Andrea Arpaci-Dusseau) for starting from the problem; <b>Eric Mazur</b> (Harvard) for guessing before seeing; <b>Kurose and Ross</b> for learning networking top-down: see it work first, then open the box.</p>
-</details>

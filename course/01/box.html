@@ -1,15 +1,40 @@
 <g-callout type="goal"><p>Trace your own <code>gosock</code> on both machines, and find out what the kernel was really asked.</p></g-callout>
 
-<p>You wrote about 40 lines. Record what they asked of the kernel, on both ends (<code>-o</code> writes the trace to a file):</p>
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>The same <code>io.Copy</code> line does not make the same system calls on both ends.</li>
+<li>Sending a file to a TCP connection, Go asks the kernel for a shortcut, <g-t k="sendfile">sendfile</g-t>: the bytes go from the file to the socket <b>without passing through your program</b>.</li>
+<li>Receiving, every chunk goes through your program: a <code>read</code> from the socket, then a <code>write</code> to the file.</li>
+</ul></div>
+
+<g-anim scene="copy-paths"></g-anim>
+
+<details class="fold more"><summary>On a real Linux machine</summary>
+<p>The sender's trace looks like this one, with extra lines from Go's runtime (threads, timers) and several <code>sendfile</code> calls instead of one. The receiver differs: there Go also finds a shortcut, a pair of <code>splice</code> calls through a pipe. This simulator's receiver takes the plain road, which is the one worth understanding first.</p>
+</details>
+<details class="fold kc"><summary>sendfile in simplified kernel C</summary>
+<g-go file="kernel (simplified).c">
+// sendfile(out_fd = 4 the socket, in_fd = 3 the file, NULL, count)
+ssize_t sys_sendfile(int out_fd, int in_fd, loff_t *offset, size_t count) {
+    struct file *in  = current->files->fd[in_fd];
+    struct file *out = current->files->fd[out_fd];
+    // pages of the file (already in kernel memory) are handed to the socket:
+    // no copy into the program's memory and back
+    return do_splice_direct(in, &in->f_pos, out, count);
+}
+</g-go>
+<p>Compare with the receiver: each <code>read</code> copies kernel → program, each <code>write</code> copies program → kernel. Two copies and two system calls per chunk.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<p>Record what both ends ask the kernel (<code>-o</code> writes the trace to a file):</p>
 <g-cmd m="B">
 $ strace -o recv.trace gosock recv :9000 in.bin
 </g-cmd>
 <g-cmd m="A">
 $ strace -o send.trace gosock send $B_IP:9000 /tmp/big.bin
 </g-cmd>
-
-<h2>One question</h2>
-<p>Your sender is an <code>io.Copy</code> over 2 MB. How many <code>read</code> and <code>write</code> calls carried the file's bytes? Count them on A (<code>grep -c</code> counts matching lines), then do the same on B:</p>
+<p>How many <code>read</code> and <code>write</code> calls carried the 2 MB? (<code>grep -c</code> counts lines.)</p>
 <g-cmd m="A">
 $ grep -c 'read(' send.trace
 $ grep -c 'write(' send.trace
@@ -23,15 +48,8 @@ $ grep -c 'write(' recv.trace
 <div class="notice">
 <h2>What you should notice</h2>
 <ul>
-<li>On A: no <code>read</code> at all, and a single <code>write</code>, the one that printed <code>sent 2097152 bytes</code>. The file travelled in <code>sendfile(4, 3, …)</code>: "copy into descriptor 4, the socket, from descriptor 3, the file".</li>
-<li>You never wrote <code>sendfile</code>. Go noticed that the source is a file and the destination a TCP connection, and asked the kernel for a shortcut.</li>
-<li>On B: dozens of <code>read</code> and <code>write</code> pairs. The same <code>io.Copy</code> line, the other way round, moved every chunk through your program.</li>
+<li>On A: no <code>read</code>, one <code>write</code> (the <code>sent 2097152 bytes</code> line). The file travelled in <code>sendfile(4, 3, …)</code>.</li>
+<li>You never wrote <code>sendfile</code>: Go chose it.</li>
+<li>On B: dozens of <code>read</code> and <code>write</code> pairs.</li>
 </ul>
 </div>
-
-<g-anim scene="copy-paths"></g-anim>
-
-<details class="fold">
-<summary>On a real Linux machine</summary>
-<p>The sender's trace looks like this one, with extra lines from Go's runtime (threads, timers) and several <code>sendfile</code> calls instead of one. The receiver differs: there Go also finds a shortcut, a pair of <code>splice</code> calls through a pipe. This simulator's receiver takes the plain road, which is the one worth understanding first.</p>
-</details>

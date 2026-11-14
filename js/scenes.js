@@ -566,13 +566,20 @@ export const SCENES = {};
 }
 
 // ───────── player ─────────
+// <g-anim scene="name">: the player. It starts folded or open as the student last chose (one choice
+// for every animation), can fill the whole window, and stops at its last step.
+const OPEN_KEY = 'gosock-web:anim-open';
+const openPref = () => { try { return localStorage.getItem(OPEN_KEY) === '1'; } catch (e) { return false; } };
 customElements.define('g-anim', class extends HTMLElement {
   connectedCallback() {
     if (this.dataset.ready) return; this.dataset.ready = 1;
     const def = SCENES[this.getAttribute('scene')];
     if (!def) { this.textContent = 'Unknown scene'; return; }
+    const N = def.steps.length;
     this.innerHTML = `
-      <div class="an-h"><span class="ttl">${esc(this.getAttribute('title') || def.title)}</span><span class="tag">${esc(def.tag)}</span></div>
+      <div class="an-h"><button class="an-fold" data-a="fold" aria-expanded="false">${ICON.chev}<span class="ttl">${esc(this.getAttribute('title') || def.title)}</span><span class="an-n">animation · ${N} steps</span></button>
+        <button class="an-icon" data-a="full" title="Full window (Esc to leave)" aria-label="Full window">${ICON.expand}</button></div>
+      <div class="an-body">
       <div class="an-stage"><svg class="sc noanim" viewBox="0 0 ${def.w} ${def.h}" role="img" aria-label="${esc(def.title)}">${def.svg}</svg></div>
       <div class="an-cap"><span class="no"></span><span class="tx"></span></div>
       <div class="an-ctl">
@@ -581,12 +588,10 @@ customElements.define('g-anim', class extends HTMLElement {
         <button data-a="next" aria-label="Next step">${ICON.next}</button>
         <button data-a="replay" aria-label="Restart">${ICON.replay}</button>
         <div class="an-dots"></div>
-      </div>`;
+      </div></div>`;
     const svg = this.querySelector('svg'), cap = this.querySelector('.tx'), no = this.querySelector('.no'), dots = this.querySelector('.an-dots');
-    const playBtn = this.querySelector('.play');
-    const N = def.steps.length;
-    let cur = 0, timer = null, shown = null;
-    // remember each element's base class so classes can be swapped per step
+    const playBtn = this.querySelector('.play'), prevBtn = this.querySelector('[data-a="prev"]'), nextBtn = this.querySelector('[data-a="next"]');
+    let cur = -1, timer = null;
     svg.querySelectorAll('[data-id]').forEach(el => { el.dataset.base = el.getAttribute('class') || ''; });
     dots.innerHTML = def.steps.map((_, i) => `<i data-i="${i}" title="Step ${i + 1}"></i>`).join('');
     const state = n => {
@@ -606,38 +611,51 @@ customElements.define('g-anim', class extends HTMLElement {
       }
     };
     const show = (n, animate = true) => {
-      cur = Math.max(0, Math.min(N - 1, n));
+      n = Math.max(0, Math.min(N - 1, n));
+      if (n === cur) return;                       // already there: nothing moves, the caption is not replayed
+      cur = n;
       if (!animate) svg.classList.add('noanim');
-      // when stepping backwards or jumping, reset first so non-cumulative leftovers disappear
       apply(cur);
       if (!animate) requestAnimationFrame(() => requestAnimationFrame(() => svg.classList.remove('noanim')));
       else svg.classList.remove('noanim');
-      const c = def.steps[cur].cap || def.steps[cur - 1]?.cap || '';
-      const t = def.steps[cur].cap;
-      cap.innerHTML = t; cap.style.animation = 'none'; void cap.offsetWidth; cap.style.animation = '';
+      cap.innerHTML = def.steps[cur].cap; cap.style.animation = 'none'; void cap.offsetWidth; cap.style.animation = '';
       no.textContent = `${cur + 1}/${N}`;
+      prevBtn.disabled = cur === 0; nextBtn.disabled = cur === N - 1;
       dots.querySelectorAll('i').forEach((d, i) => d.className = i < cur ? 'past' : i === cur ? 'now' : '');
     };
     const stop = () => { clearInterval(timer); timer = null; playBtn.innerHTML = ICON.play + '<span>Play</span>'; };
     const play = () => {
       if (cur >= N - 1) show(0, false);
       playBtn.innerHTML = ICON.pause + '<span>Pause</span>';
-      const tick = () => { if (cur >= N - 1) { stop(); return; } show(cur + 1); };
+      const tick = () => { if (cur >= N - 1) { stop(); return; } show(cur + 1); if (cur >= N - 1) stop(); };
       setTimeout(tick, 350);
       timer = setInterval(tick, 4200);
     };
-    this.querySelector('.an-ctl').addEventListener('click', e => {
+    const fold = (open) => { this.classList.toggle('open', open); this.querySelector('.an-fold').setAttribute('aria-expanded', open); if (!open) { stop(); full(false); } };
+    const full = (on) => {
+      this.classList.toggle('full', on); document.body.classList.toggle('an-full-on', on);
+      this.querySelector('[data-a="full"]').innerHTML = on ? ICON.shrink : ICON.expand;
+      if (on) fold(true);
+    };
+    this.addEventListener('click', e => {
       const b = e.target.closest('button'), d = e.target.closest('i[data-i]');
       if (d) { stop(); show(+d.dataset.i); return; }
       if (!b) return;
       const a = b.dataset.a;
-      if (a === 'play') timer ? stop() : play();
+      if (a === 'fold') {
+        const open = !this.classList.contains('open');
+        try { localStorage.setItem(OPEN_KEY, open ? '1' : '0'); } catch (err) { /* only this page */ }
+        document.querySelectorAll('g-anim').forEach((g) => g.setOpen?.(open));
+      } else if (a === 'full') full(!this.classList.contains('full'));
+      else if (a === 'play') timer ? stop() : play();
       else if (a === 'next') { stop(); show(cur + 1); }
       else if (a === 'prev') { stop(); show(cur - 1); }
-      else if (a === 'replay') { stop(); show(0, false); play(); }
+      else if (a === 'replay') { stop(); cur = -1; show(0, false); play(); }
     });
-    // empty captions (follow-up frames) reuse the one before
+    this.addEventListener('keydown', e => { if (e.key === 'Escape' && this.classList.contains('full')) full(false); });
+    this.setOpen = fold;
+    this.disconnectedCallback = () => { stop(); if (this.classList.contains('full')) document.body.classList.remove('an-full-on'); };
     def.steps.forEach((s, i) => { if (!s.cap && i) s.cap = def.steps[i - 1].cap; });
-    show(0, false);
+    show(0, false); fold(openPref());
   }
 });

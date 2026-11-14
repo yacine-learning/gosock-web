@@ -1,9 +1,23 @@
-<p class="lede"><code>strace</code> prints every <g-t k="syscall">system call</g-t> a program makes: the course's main window into the kernel's front door. Here is how to read it.</p>
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li><code>strace CMD</code> prints every <g-t k="syscall">system call</g-t> the command makes, one per line: <b>name(arguments) = result</b>.</li>
+<li>A result of <code>-1</code> comes with an error name such as <code>ENOENT</code>; a <code>read</code> that returns <code>0</code> means end of file.</li>
+<li>It is the course's main window on what a program really asks the kernel.</li>
+</ul></div>
 
 <g-anim scene="strace-trace"></g-anim>
 
-<h2>Trace a real command</h2>
-<p>Put <code>strace</code> in front of any command. Its lines go to the terminal, mixed with what the command itself prints:</p>
+<details class="fold more"><summary>Options, and lines that stop in the middle</summary>
+<table>
+<tr><th>Option</th><th>Effect</th></tr>
+<tr><td><code>-o FILE</code></td><td>write the trace to a file, so it does not mix with the program's own output</td></tr>
+<tr><td><code>-e trace=read,write</code></td><td>only the calls you name; <code>-e trace=network</code> selects all the socket calls</td></tr>
+<tr><td><code>-p PID</code></td><td>attach to a program that is already running (<code>ps</code> shows the PIDs)</td></tr>
+</table>
+<p>A line that stops in the middle is a call that has not returned yet: the program is waiting inside the kernel. If something else must be printed meanwhile, <code>strace</code> marks it <code>&lt;unfinished ...&gt;</code> and completes it later on a line starting with <code>&lt;... resumed&gt;</code>.</p>
+</details>
+
+<h2 class="run">Run this</h2>
 <g-cmd m="A">
 $ strace cat /tmp/hello.txt
 </g-cmd>
@@ -11,19 +25,8 @@ $ strace cat /tmp/hello.txt
 <div class="notice">
 <h2>What you should notice</h2>
 <ul>
-<li>One line per call: <b>name(arguments) = result</b>. <code>openat</code> returned <code>3</code>, and every later line about the file starts with that 3.</li>
-<li>The text appears twice: once inside <code>read(3, "hello…")</code> where <code>cat</code> received it, once inside <code>write(1, "hello…")</code> where it sent it to the terminal. And once more for real, because the <code>write</code> happened.</li>
-<li>The last <code>read</code> returned <code>0</code>: end of file. That is how <code>cat</code> knew it could stop.</li>
+<li><code>openat</code> returned <code>3</code>, and every later line about the file starts with that 3.</li>
+<li>The text appears in <code>read(3, "hello…")</code>, where <code>cat</code> received it, then in <code>write(1, "hello…")</code>, where it sent it to the terminal.</li>
+<li>The last <code>read</code> returned <code>0</code>: that is how <code>cat</code> knew it could stop.</li>
 </ul>
 </div>
-
-<details class="fold">
-<summary>Options you will use</summary>
-<table>
-<tr><th>Option</th><th>Effect</th></tr>
-<tr><td><code>-o FILE</code></td><td>write the trace to a file, so it does not mix with the program's own output</td></tr>
-<tr><td><code>-e trace=read,write</code></td><td>only the calls you name; <code>-e trace=network</code> selects all the socket calls</td></tr>
-<tr><td><code>-p PID</code></td><td>attach to a program that is already running (<code>ps</code> shows the PIDs)</td></tr>
-</table>
-<p>A line that stops in the middle is a call that has not returned yet: the program is waiting inside the kernel, and the rest of the line appears when the call returns. If something else must be printed meanwhile, <code>strace</code> marks the waiting call <code>&lt;unfinished ...&gt;</code> and completes it later on a line starting with <code>&lt;... resumed&gt;</code>.</p>
-</details>
