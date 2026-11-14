@@ -168,7 +168,7 @@ async function route() {
     const body = await (await fetch(`course/${it.mod.dir}/${it.file}.html`)).text();
     const mi = S.index.modules.indexOf(it.mod) + 1;
     crumbs = `${String(mi).padStart(2, '0')} · ${esc(it.mod.title)} / <b>${esc(it.title)}</b>`;
-    html = `<div class="kicker">${it.lab ? 'Code lab' : it.kind === 'lab' ? 'Lab' : 'Lesson'} · module ${mi}</div><h1>${esc(it.title)}</h1><div class="meta">about ${it.minutes} minutes</div>${body}<div class="page-foot"></div>`;
+    html = `<div class="kicker">${it.lab ? 'Code lab' : it.quiz ? 'Check' : it.kind === 'lab' ? 'Lab' : 'Lesson'} · module ${mi}</div><h1>${esc(it.title)}</h1><div class="meta">about ${it.minutes} minutes</div>${body}<div class="page-foot"></div>`;
   } else if (h === 'glossary') {
     S.page = 'glossary'; crumbs = '<b>Glossary</b>';
     html = '<h1>Glossary</h1><p class="lede">The words of the course. Underlined words in a page show the same definitions when you point at them.</p><dl class="gl">' +

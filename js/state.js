@@ -1,6 +1,6 @@
 // Shared state: what is saved in the browser, and hooks the page components call into.
 const KEY = 'gosock-web:v1';
-const blank = { done: {}, code: {}, labs: {}, predict: {}, notes: [], last: '', project: 'gosock' };
+const blank = { done: {}, code: {}, labs: {}, predict: {}, quiz: {}, notes: [], last: '', project: 'gosock' };
 function load() { try { return { ...blank, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch (e) { return { ...blank }; } }
 export const S = {
   store: load(),

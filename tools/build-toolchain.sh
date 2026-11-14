@@ -51,6 +51,14 @@ s2, n = re.subn(r'(?m)^(\t(?:E[A-Z0-9]+):\s+")([A-Z])(?=[a-z ])', lambda m: m.gr
 assert n > 50, 'errorstr table not found in tables_js.go'
 open(os.path.join(tmp, 'tables_js.go'), 'w').write(s2)
 rep[p] = os.path.join(tmp, 'tables_js.go')
+# os/file_unix.go: never put a descriptor in non-blocking mode behind the program's back
+# (syscall.SetNonblock is real here, and blocking descriptors are what the simulator's os expects)
+p = os.path.join(goroot, 'src/os/file_unix.go')
+s = open(p).read()
+old = 'pollable := kind == kindOpenFile || kind == kindPipe || kind == kindSock || nonBlocking'
+assert old in s, 'pollable line not found in os/file_unix.go'
+open(os.path.join(tmp, 'file_unix.go'), 'w').write(s.replace(old, 'pollable := false && (kind == kindOpenFile || kind == kindPipe || kind == kindSock || nonBlocking)'))
+rep[p] = os.path.join(tmp, 'file_unix.go')
 json.dump({'Replace': rep}, open(os.path.join(tmp, 'overlay.json'), 'w'))
 PY
 export GOOS=js GOARCH=wasm GOCACHE="$TMP/cache" GOFLAGS=-trimpath

@@ -5,6 +5,9 @@
 
 package syscall
 
+// O_NONBLOCK has the Linux value (js/wasm does not define it).
+const O_NONBLOCK = 0x800
+
 const (
 	AF_UNSPEC = 0
 	AF_UNIX   = 1

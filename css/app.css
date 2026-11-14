@@ -98,6 +98,22 @@ g-cmd { display: block; margin: 14px 0; border-radius: 12px; overflow: hidden; b
 
 /* predict */
 g-predict { display: block; margin: 20px 0; padding: 16px 18px; border-radius: 14px; border: 1px solid color-mix(in srgb, var(--violet) 40%, transparent); background: color-mix(in srgb, var(--violet) 7%, var(--surface)); }
+g-quiz { display: block; margin: 20px 0; padding: 18px 20px; border-radius: 16px; border: 1px solid color-mix(in srgb, var(--violet) 40%, transparent); background: color-mix(in srgb, var(--violet) 6%, var(--surface)); }
+.qz-top { display: flex; align-items: center; gap: 14px; }
+.qz-bar { flex: 1; height: 6px; border-radius: 9px; background: var(--surface-3); overflow: hidden; } .qz-bar i { display: block; height: 100%; background: var(--violet); transition: width .3s; }
+.qz-q { margin: 14px 0 6px; color: var(--text); font-size: 1.04rem; }
+.qz-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.qz-res { display: flex; gap: 18px; align-items: center; padding: 14px 18px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--surface); }
+.qz-res.pass { border-color: var(--net); } .qz-res.fail { border-color: var(--kernel); }
+.qz-res p { margin: 4px 0 0; }
+.qz-score { font: 700 2rem var(--display); white-space: nowrap; } .qz-res.pass .qz-score { color: var(--net); } .qz-res.fail .qz-score { color: var(--kernel); }
+.view .qz-h { font: 700 1rem var(--display); margin: 20px 0 8px; }
+.qz-c { padding: 10px 0; border-top: 1px solid var(--line); }
+.qz-cq { display: flex; gap: 10px; color: var(--text); }
+.qz-mark { flex: none; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px; font-weight: 700; font-size: 13px; }
+.qz-c.right .qz-mark { background: var(--net); color: #04121c; } .qz-c.wrong .qz-mark { background: var(--danger); color: #fff; }
+.qz-a { margin: 4px 0 0 32px; font-size: .95rem; color: var(--text-2); } .qz-a.good { color: var(--net); }
+.qz-why { margin: 6px 0 0 32px; font-size: .93rem; color: var(--muted); } .qz-why p { margin: 4px 0; }
 .pr-k { font: 700 12px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--violet); }
 .pr-opt { display: block; width: 100%; text-align: left; margin: 8px 0; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); color: var(--text-2); }
 .pr-opt:hover { border-color: var(--violet); }
@@ -204,6 +220,8 @@ g-lab, g-example { display: block; margin: 20px 0; padding: 18px 20px; border-ra
 .kv-wire.live .cable { background: repeating-linear-gradient(90deg, var(--net) 0 6px, transparent 6px 11px); animation: flow .5s linear infinite; }
 @keyframes flow { to { background-position: 11px 0; } }
 .kv-wire .n { font: 600 11.5px var(--mono); color: var(--text-2); }
+.kv-cache { margin: 6px 8px 2px; font: 11.5px var(--mono); color: var(--muted); } .kv-cache b { color: var(--text-2); font-weight: 600; } .kv-cache .dirty { color: var(--kernel); }
+.kv-pk .lost, .kv-wire .lost { color: var(--danger); text-decoration: line-through; } .kv-wire .n.lost { text-decoration: none; }
 .kv-pk { font: 10.5px var(--mono); line-height: 1.35; white-space: nowrap; }
 .kv-pk .ab { color: var(--a); } .kv-pk .ba { color: var(--b); }
 

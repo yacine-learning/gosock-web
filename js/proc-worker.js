@@ -38,6 +38,9 @@ globalThis.fs = {
   socket: direct('socket', 3), bind: direct('bind', 3), listen: direct('listen', 2), accept: direct('accept', 1), connect: direct('connect', 3),
   getsockname: direct('getsockname', 1), getpeername: direct('getpeername', 1), getsockopt: direct('getsockopt', 3), setsockopt: direct('setsockopt', 4),
   shutdown: direct('shutdown', 2), sendfile: direct('sendfile', 3),
+  // offsets, duplicates, pipes, flags, epoll (gosrc/syscall/fs_js.go and net_js.go)
+  lseek: direct('lseek', 3), dup: direct('dup', 1), dup2: direct('dup2', 2), pipe2: direct('pipe2', 0), fcntl: direct('fcntl', 3),
+  epoll_create1: direct('epoll_create1', 1), epoll_ctl: direct('epoll_ctl', 5), epoll_wait: direct('epoll_wait', 3),
 };
 const norm = (p) => { const out = []; for (const s of ((p.startsWith('/') ? '' : cwd + '/') + p).split('/')) { if (!s || s === '.') continue; if (s === '..') out.pop(); else out.push(s); } return '/' + out.join('/'); };
 globalThis.path = { resolve: (...parts) => norm(parts.join('/')) };

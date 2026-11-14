@@ -39,6 +39,52 @@ def('g-predict', (el) => {
   draw();
 });
 
+// <g-quiz id pass="75"> of <g-qq correct="b"><g-q>…</g-q><g-o k="a">…</g-o>…<g-why>…</g-why></g-qq>:
+// the questions one after the other, no answer shown until the end; then the grade, every
+// correction, and a pass / no pass that is only a recommendation.
+def('g-quiz', (el) => {
+  const id = el.id, pass = +(el.getAttribute('pass') || 75), about = el.getAttribute('about') || 'the modules before this one';
+  const qs = [...el.querySelectorAll('g-qq')].map((q) => ({ correct: q.getAttribute('correct'), q: q.querySelector('g-q').innerHTML, why: q.querySelector('g-why')?.innerHTML || '',
+    opts: [...q.querySelectorAll('g-o')].map((o) => [o.getAttribute('k'), o.innerHTML]) }));
+  const N = qs.length;
+  let run = null;                                   // { i, answers } while answering
+  const st = () => S.store.quiz?.[id];
+  const draw = () => {
+    const done = st();
+    if (run) {
+      const q = qs[run.i], pick = run.answers[run.i];
+      el.innerHTML = `<div class="qz-top"><span class="pr-k">Question ${run.i + 1} of ${N}</span><span class="qz-bar"><i style="width:${(run.i / N) * 100}%"></i></span></div>
+        <div class="qz-q">${q.q}</div>` + q.opts.map(([k, h]) => `<button class="pr-opt ${pick === k ? 'pick' : ''}" data-k="${k}">${h}</button>`).join('') +
+        `<div class="qz-row"><span class="meta">No correction until the end.</span><button class="btn primary sm" data-a="next" ${pick ? '' : 'disabled'}>${run.i === N - 1 ? 'See my result' : 'Next question'}</button></div>`;
+    } else if (done) {
+      const ok = done.score * 100 >= pass * N;
+      el.innerHTML = `<div class="qz-res ${ok ? 'pass' : 'fail'}"><div class="qz-score">${done.score} / ${N}</div><div><b>${ok ? 'Pass' : 'No pass'}</b><p>${ok
+        ? 'The ideas you need for this module are in place. Go ahead.'
+        : 'I recommend you go over ' + esc(about) + ' one more time before tackling this new one. The corrections below show what to look at again.'}</p></div></div>
+        <h3 class="qz-h">The corrections</h3>` + qs.map((q, i) => {
+        const a = done.answers[i], right = a === q.correct, txt = (k) => q.opts.find(([kk]) => kk === k)?.[1] || '';
+        return `<div class="qz-c ${right ? 'right' : 'wrong'}"><div class="qz-cq"><span class="qz-mark">${right ? '✓' : '✗'}</span><span>${i + 1}. ${q.q}</span></div>
+          <div class="qz-a">Your answer: ${txt(a)}</div>${right ? '' : `<div class="qz-a good">Correct answer: ${txt(q.correct)}</div>`}<div class="qz-why">${q.why}</div></div>`;
+      }).join('') + `<div class="qz-row"><span class="meta">Pass mark: ${pass}%.</span><button class="btn sm" data-a="start">Take it again</button></div>`;
+    } else {
+      el.innerHTML = `<div class="pr-k">Before you start: ${N} questions</div><p>On ${esc(about)}. One question at a time, no correction until the end; then your grade and every correction. It only recommends: you can start the module whatever the result.</p>
+        <div class="qz-row"><span></span><button class="btn primary sm" data-a="start">Start the questions</button></div>`;
+    }
+  };
+  el.addEventListener('click', (e) => {
+    const o = e.target.closest('.pr-opt'), a = e.target.closest('button')?.dataset.a;
+    if (o && run) { run.answers[run.i] = o.dataset.k; draw(); }
+    else if (a === 'start') { run = { i: 0, answers: [] }; draw(); }
+    else if (a === 'next' && run && run.answers[run.i]) {
+      if (run.i < N - 1) { run.i++; draw(); return; }
+      const score = qs.filter((q, i) => run.answers[i] === q.correct).length;
+      (S.store.quiz ??= {})[id] = { answers: run.answers, score, when: new Date().toISOString().slice(0, 16) };
+      run = null; S.save(); S.markDone?.(S.page); draw(); el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+  });
+  draw();
+});
+
 // <g-example project="copy">text</g-example>: a ready-made program to open, build and run
 def('g-example', (el) => {
   const p = el.getAttribute('project'), inner = el.innerHTML;

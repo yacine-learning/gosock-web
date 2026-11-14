@@ -20,7 +20,8 @@ export class KView {
       else if (type === 'exit') this.cur.delete(d.m.name + d.pid);
       else if (type === 'packet' && d.dev === 'eth0') {
         const w = this.wire, ab = d.from === sim.a;
-        if (performance.now() - w.t > 2500) { w.ab = w.ba = w.bytes = 0; w.last = []; }
+        if (d.dropped) { w.lost = (w.lost || 0) + 1; w.last.push(`<span class="lost">${ab ? 'A→B' : 'B→A'} [${TCPF[d.seg.flags] || d.seg.flags}]${d.seg.len ? ' ' + d.seg.len : ''} lost</span>`); if (w.last.length > 5) w.last.shift(); w.t = performance.now(); this.touch(); return; }
+        if (performance.now() - w.t > 2500) { w.ab = w.ba = w.bytes = w.lost = 0; w.last = []; }
         ab ? w.ab++ : w.ba++; w.bytes += d.seg.len; w.flying++; w.t = performance.now();
         w.last.push(`<span class="${ab ? 'ab' : 'ba'}">${ab ? 'A→B' : 'B→A'} [${TCPF[d.seg.flags] || d.seg.flags}]${d.seg.len ? ' ' + d.seg.len : ''}</span>`); if (w.last.length > 5) w.last.shift();
       } else if (type === 'deliver' && d.dev === 'eth0') this.wire.flying = Math.max(0, this.wire.flying - 1);
@@ -66,14 +67,21 @@ export class KView {
     }
     return `<div class="kv-m"><div class="kv-mh"><span class="chip ${m.name}">${m.name}</span>Machine ${m.name}<span class="ip">${m.ip}</span></div>
       <div class="kv-zone user"><div class="kv-zl">User space · processes</div>${user || '<div class="kv-empty">No program is running. Start one in the terminal below.</div>'}</div>
-      <div class="kv-zone kern"><div class="kv-zl">Kernel · sockets</div>${kern || '<div class="kv-empty">No socket.</div>'}</div></div>`;
+      <div class="kv-zone kern"><div class="kv-zl">Kernel · sockets</div>${kern || '<div class="kv-empty">No socket.</div>'}${this.cacheLine(m)}</div></div>`;
+  }
+  // the page cache and the link's netem settings, when there is something to say
+  cacheLine(m) {
+    const { cached, dirty } = m.cacheBytes(), n = m.netem, bits = [];
+    if (cached) bits.push(`page cache <b>${size(cached)}</b>${dirty ? `, <span class="dirty">${size(dirty)} dirty</span>` : ''}`);
+    if (n.loss || n.delay) bits.push(`eth0 netem:${n.loss ? ` loss ${+(n.loss * 100).toFixed(1)}%` : ''}${n.delay ? ` delay ${n.delay} ms` : ''}`);
+    return bits.length ? `<div class="kv-cache">${bits.join(' · ')}</div>` : '';
   }
   render() {
     if (!this.sim) return;
     const w = this.wire, live = w.flying > 0 || performance.now() - w.t < 250;
     if (live) setTimeout(() => this.touch(), 260);
     this.el.innerHTML = this.machine(this.sim.a) +
-      `<div class="kv-wire ${live ? 'live' : ''}"><span>the wire</span><div class="cable"></div><span class="n">${w.ab} → · ← ${w.ba}</span><span>segments</span><span class="n">${size(w.bytes)}</span><div class="kv-pk">${w.last.join('<br>')}</div></div>` +
+      `<div class="kv-wire ${live ? 'live' : ''}"><span>the wire</span><div class="cable"></div><span class="n">${w.ab} → · ← ${w.ba}</span><span>segments</span><span class="n">${size(w.bytes)}</span>${w.lost ? `<span class="n lost">${w.lost} lost</span>` : ''}<div class="kv-pk">${w.last.join('<br>')}</div></div>` +
       this.machine(this.sim.b);
   }
 }

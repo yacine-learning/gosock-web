@@ -2,6 +2,10 @@
 import { World } from '../js/kernel.js';
 import { Shell, setupMachines } from '../js/tools.js';
 import assert from 'node:assert';
+import { fmtSys } from '../js/kernel.js';
+import { createHash } from 'node:crypto';
+const await_fmt = fmtSys;
+const require_sha = (b) => createHash('sha256').update(b).digest('hex');
 
 function boot() {
   const world = new World(); const { a, b } = setupMachines(world);
@@ -85,6 +89,91 @@ test('strace -o writes the trace to a file; grep counts lines', async () => {
   await A.run("strace -o t.trace cat /tmp/hello.txt; grep -c 'read(' t.trace; grep -n close t.trace");
   assert.match(A.t.out, /^hello from machine A\n2\n6:close\(3\) = 0\n$/);
 });
+
+// ── module 2-4 support ──
+const run1 = (m, main) => new Promise((res, rej) => { const p = m.spawn({ argv: ['t'], stdio: [0, 1, 2].map(() => m.openOfd('/', '/dev/null', 2)), main: async (c) => { try { res(await main(c)); } catch (e) { rej(e); } return 0; } }); p.start(); });
+test('EMFILE at 1024 descriptors; ENOSPC after a short write on the small disk', async () => {
+  const { a } = boot();
+  const n = await run1(a, async (c) => { let k = 0; try { for (;;) { await c.sys('openat', '/etc/hostname', 0); k++; } } catch (e) { assert.equal(e.code, 'EMFILE'); } return k; });
+  assert.equal(n, 1021);                    // 0, 1, 2 are taken
+  const r = await run1(a, async (c) => {
+    const fd = await c.sys('openat', '/mnt/small/f', 0o101, 0o644), out = [];
+    out.push(await c.sys('write', fd, new Uint8Array(700 << 10)));
+    out.push(await c.sys('write', fd, new Uint8Array(700 << 10)));
+    try { await c.sys('write', fd, new Uint8Array(10)); } catch (e) { out.push(e.code); }
+    return out;
+  });
+  assert.deepEqual(r, [700 << 10, (1 << 20) - (700 << 10), 'ENOSPC']);
+});
+test('page cache: cold read is slow, warm is fast; fincore, free, dirty pages, sync, drop_caches needs root', async () => {
+  const { A } = boot();
+  await A.run('fincore /tmp/big.bin');
+  assert.match(A.t.out, /RES PAGES SIZE FILE\n\s*0B\s+0\s+2M \/tmp\/big.bin/);
+  let t0 = Date.now(); await A.run('cat /tmp/big.bin > /dev/null'); const cold = Date.now() - t0;
+  t0 = Date.now(); await A.run('cat /tmp/big.bin > /dev/null'); const warm = Date.now() - t0;
+  assert.ok(cold > 80 && warm < cold / 3, `cold ${cold} ms, warm ${warm} ms`);
+  A.t.out = ''; await A.run('fincore /tmp/big.bin; grep -E "Cached|Dirty" /proc/meminfo');
+  assert.match(A.t.out, /2M\s+512\s+2M \/tmp\/big.bin/); assert.match(A.t.out, /Cached:\s+2048 kB\nDirty:\s+0 kB/);
+  A.t.out = ''; await A.run('cp /tmp/big.bin /tmp/c.bin; grep Dirty /proc/meminfo; sync; grep Dirty /proc/meminfo');
+  assert.match(A.t.out, /Dirty:\s+2048 kB\nDirty:\s+0 kB/);
+  A.t.out = ''; await A.run('echo 3 > /proc/sys/vm/drop_caches; echo 3 | sudo tee /proc/sys/vm/drop_caches; fincore /tmp/big.bin; free');
+  assert.match(A.t.out, /bash: \/proc\/sys\/vm\/drop_caches: Permission denied\n3\n/); assert.match(A.t.out, /0B\s+0\s+2M \/tmp\/big.bin/);
+  assert.match(A.t.out, /total\s+used\s+free\s+shared\s+buff\/cache\s+available\nMem:/);
+  A.t.out = ''; await A.run('df -h');
+  assert.match(A.t.out, /\/dev\/vdb\s+1M\s+0B\s+1M\s+0% \/mnt\/small/); assert.match(A.t.out, /\/dev\/vda1\s+8G\s+1\.5G\s+6\.5G\s+19% \//);
+});
+test('non-blocking read gives EAGAIN; fcntl in strace; epoll reports a pending connection and data', async () => {
+  const { a, b } = boot(); const lines = [];
+  a.world.on((t, r) => { if (t === 'sys' && r.m === b) lines.push((await_fmt)(r)); });
+  const r = await run1(b, async (c) => {
+    const l = await c.sys('socket', 2, 1, 6); await c.sys('bind', l, '0.0.0.0', 9000); await c.sys('listen', l, 8);
+    const fl = await c.sys('fcntl', l, 3, 0); await c.sys('fcntl', l, 4, fl | 0o4000);
+    let e1; try { await c.sys('accept', l); } catch (e) { e1 = e.code; }
+    const ep = await c.sys('epoll_create1', 0); await c.sys('epoll_ctl', ep, 1, l, 1, l);
+    const sender = a.spawn({ argv: ['nc', '-N', '10.0.0.2', '9000'], stdio: [a.openOfd('/', '/tmp/hello.txt'), a.openOfd('/', '/dev/null', 1), a.openOfd('/', '/dev/null', 1)], main: (await import('../js/tools.js')).PROGRAMS.nc });
+    sender.start();
+    const ev = await c.sys('epoll_wait', ep, 4, 2000);
+    const { fd } = await c.sys('accept', l);
+    await c.sys('epoll_ctl', ep, 1, fd, 1, fd);
+    const ev2 = await c.sys('epoll_wait', ep, 4, 2000);
+    const data = await c.sys('read', fd, 100);
+    return { e1, ev, ev2, data: new TextDecoder().decode(data) };
+  });
+  assert.equal(r.e1, 'EAGAIN'); assert.deepEqual(r.ev.map((e) => [e.events, e.data]), [[1, 3]]);
+  assert.ok(r.ev2.some((e) => e.data === 5 && (e.events & 1))); assert.equal(r.data, 'hello from machine A\n');
+  assert.ok(lines.some((l) => l === 'fcntl(3, F_GETFL) = 0x2 (flags O_RDWR)'), lines.join('\n'));
+  assert.ok(lines.some((l) => l === 'fcntl(3, F_SETFL, O_RDWR|O_NONBLOCK) = 0'));
+  assert.ok(lines.some((l) => l === 'accept(3, ) = -1 EAGAIN (Resource temporarily unavailable)'), lines.join('\n'));
+  assert.ok(lines.some((l) => /^epoll_wait\(4, \[\{events=EPOLLIN, data=\{u32=3, u64=3\}\}\], 4, 2000\) = 1$/.test(l)));
+});
+test('Nagle: small writes are held while data is unacknowledged, unless TCP_NODELAY', async () => {
+  const count = async (nodelay) => {
+    const { a, b, world } = boot(); let segs = 0;
+    world.on((t, pk) => { if (t === 'packet' && pk.from === a && pk.seg.len) segs++; });
+    const srv = run1(b, async (c) => { const l = await c.sys('socket', 2, 1, 6); await c.sys('bind', l, '0.0.0.0', 9000); await c.sys('listen', l, 8); const { fd } = await c.sys('accept', l); let n = 0; for (;;) { const d = await c.sys('read', fd, 4096); if (!d.length) break; n += d.length; } return n; });
+    await sleep(10);
+    await run1(a, async (c) => { const s = await c.sys('socket', 2, 1, 6); await c.sys('setsockopt', s, 6, 1, nodelay); await c.sys('connect', s, '10.0.0.2', 9000); for (let i = 0; i < 200; i++) await c.sys('write', s, new Uint8Array([65])); await c.sys('close', s); });
+    assert.equal(await srv, 200); return segs;
+  };
+  const off = await count(1), on = await count(0);
+  assert.equal(off, 200); assert.ok(on < 50, `with Nagle: ${on} segments`);
+});
+test('tc netem loss: the transfer is still exact, ss -ti counts retransmissions, tcpdump prints segments', async () => {
+  const { A, B, a, world } = boot();
+  await A.run('tc qdisc add dev eth0 root netem loss 10%; echo rc=$?; sudo tc qdisc add dev eth0 root netem loss 10%; tc qdisc show dev eth0');
+  assert.match(A.t.out, /RTNETLINK answers: Operation not permitted\nrc=2\nqdisc netem 8001: root refcnt 2 limit 1000 loss 10%/);
+  const dump = B.run('tcpdump -n -c 3 port 9000');
+  await sleep(10);
+  const recv = new Shell(B.m, { out: '', write(b) { this.out += new TextDecoder().decode(b); }, clear() {}, busy() {} }).run('nc -l 9000 > got.bin');
+  await sleep(10);
+  A.t.out = ''; await A.run('nc -N $B_IP 9000 < /tmp/big.bin; ss -tani; echo sent');
+  await recv; await dump;
+  assert.ok(a.stats.dropped > 10, 'dropped ' + a.stats.dropped);
+  assert.equal(require_sha(B.m.readFile('/home/student/got.bin')), require_sha(a.readFile('/tmp/big.bin')));
+  assert.match(B.t.out, /IP 10\.0\.0\.1\.\d+ > 10\.0\.0\.2\.9000: Flags \[S\], seq \d+, win 131072, length 0\n.*IP 10\.0\.0\.2\.9000 > 10\.0\.0\.1\.\d+: Flags \[S\.\], seq \d+, ack \d+, win 131072, length 0\n.*IP 10\.0\.0\.1\.\d+ > 10\.0\.0\.2\.9000: Flags \[\.\], ack 1, win 131072, length 0\n/);
+  assert.match(B.t.out, /3 packets captured/);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try { await fn(); console.log('ok   ', name); } catch (e) { failed++; console.log('FAIL ', name, '\n', e); }

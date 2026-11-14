@@ -183,8 +183,85 @@ func Shutdown(fd int, how int) error {
 	return err
 }
 
+// SetNonblock does what it does on Linux: read the flags with fcntl(F_GETFL), then set
+// them with fcntl(F_SETFL). (Package os never calls it in this simulator: see the build
+// script; the descriptors you open stay blocking unless you ask.)
 func SetNonblock(fd int, nonblocking bool) error {
-	return nil
+	v, err := fsCall("fcntl", fd, F_GETFL, 0)
+	if err != nil {
+		return err
+	}
+	flags := v.Int()
+	if nonblocking {
+		flags |= O_NONBLOCK
+	} else {
+		flags &^= O_NONBLOCK
+	}
+	_, err = fsCall("fcntl", fd, F_SETFL, flags)
+	return err
+}
+
+// ── epoll: wait for any of several descriptors (Linux only; added for the course) ──
+
+const (
+	EPOLLIN       = 0x1
+	EPOLLPRI      = 0x2
+	EPOLLOUT      = 0x4
+	EPOLLERR      = 0x8
+	EPOLLHUP      = 0x10
+	EPOLLRDHUP    = 0x2000
+	EPOLLET       = 0x80000000
+	EPOLL_CLOEXEC = 0x80000
+	EPOLL_CTL_ADD = 0x1
+	EPOLL_CTL_DEL = 0x2
+	EPOLL_CTL_MOD = 0x3
+)
+
+// EpollEvent is laid out as on linux/amd64.
+type EpollEvent struct {
+	Events uint32
+	Fd     int32
+	Pad    int32
+}
+
+func EpollCreate1(flag int) (fd int, err error) {
+	v, err := fsCall("epoll_create1", flag)
+	if err != nil {
+		return -1, err
+	}
+	fd = v.Int()
+	registerFD(fd)
+	return fd, nil
+}
+
+func EpollCreate(size int) (fd int, err error) {
+	if size <= 0 {
+		return -1, EINVAL
+	}
+	return EpollCreate1(0)
+}
+
+func EpollCtl(epfd int, op int, fd int, event *EpollEvent) error {
+	var ev, data int
+	if event != nil {
+		ev, data = int(event.Events), int(event.Fd)
+	}
+	_, err := fsCall("epoll_ctl", epfd, op, fd, ev, data)
+	return err
+}
+
+// EpollWait waits up to msec milliseconds (-1: for ever) and fills events.
+func EpollWait(epfd int, events []EpollEvent, msec int) (n int, err error) {
+	v, err := fsCall("epoll_wait", epfd, len(events), msec)
+	if err != nil {
+		return 0, err
+	}
+	n = v.Length()
+	for i := 0; i < n && i < len(events); i++ {
+		e := v.Index(i)
+		events[i] = EpollEvent{Events: uint32(e.Get("events").Int()), Fd: int32(e.Get("data").Int())}
+	}
+	return n, nil
 }
 
 // Sendfile copies up to count bytes from infd to outfd inside the kernel.
