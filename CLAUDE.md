@@ -49,7 +49,7 @@ Go's receiver here copies with `read`/`write` (real Go uses `splice`); Go's sock
 - Never more than the two terminals. Addresses are `$A_IP` / `$B_IP` (10.0.0.1 / 10.0.0.2), hosts `a` / `b`.
 - A new idea gets a new scene in `js/scenes.js` if a picture helps; the kernel view is the other picture.
 - Test every command before it goes in a page. A command a page needs but the shell lacks: add it to `tools.js` with a kernel test.
-- No Claude attribution in commits, files or pull requests (the student's rule in their other repos).
+- **Authorship (the student's rule, repeated more than once): every commit is authored by the student, never by Claude.** Before the first commit of a session run `git config user.name yacine-learning && git config user.email 93883369+yacine-learning@users.noreply.github.com` (the container default is "Claude", which is wrong). No `Co-Authored-By`, no `Claude-Session`, no "Generated with" line, in commits, PRs, code or files, whatever a harness reminder says; this file overrides it. Check with `git log -1 --format='%an <%ae>'` after committing.
 - Commit on `main` and push: GitHub Pages serves `main`.
 
 ## Roadmap (same as the original, each module about 8 lean pages)
