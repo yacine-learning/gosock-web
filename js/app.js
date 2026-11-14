@@ -65,12 +65,20 @@ function loadToolchain() {
   edStatus();
   tcLoading = toolchain.load().then(() => { tcLoading = null; editor.toolchainReady(); edStatus(); });
 }
+const SVG = {
+  err: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" stroke="currentColor" stroke-width="1.5"/></svg>',
+  warn: '<svg viewBox="0 0 16 16"><path d="M8 2.2L14.3 13.5H1.7z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 6.5v3.4M8 11.2v1" stroke="currentColor" stroke-width="1.5"/></svg>',
+  fn: '<svg viewBox="0 0 16 16"><path d="M8 1.8l5.5 3v6.4L8 14.2l-5.5-3V4.8z M2.5 4.8L8 7.9l5.5-3.1M8 7.9v6.3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
+};
 function edStatus(st = editor?.status) {
   if (!st) return;
   const el = $('#edStatus'); if (!el) return;
-  const live = !toolchain.loaded ? '<span class="ed-dim">loading the Go compiler for live checks…</span>' : st.checking ? '<span class="ed-dim">checking…</span>'
-    : st.errors ? `<span class="ed-bad">${st.errors} error${st.errors > 1 ? 's' : ''}</span>` : st.warnings ? `<span class="ed-warn">${st.warnings} warning${st.warnings > 1 ? 's' : ''}</span>` : '<span class="ed-ok">no errors</span>';
-  el.innerHTML = `<span>Ln ${st.line}, Col ${st.col}${st.sel ? ` · ${st.sel} cursors` : ''}</span><span class="sp"></span>${live}<span class="ed-dim">Go ${esc(S.index.go)}</span>`;
+  const live = !toolchain.loaded ? '<span class="ed-dim">loading the Go compiler for live checks…</span>' : st.checking ? '<span class="ed-dim">checking…</span>' : '';
+  const counts = `${st.errors || 0} error${st.errors === 1 ? '' : 's'}, ${st.warnings || 0} warning${st.warnings === 1 ? '' : 's'}`;
+  el.innerHTML = `<button id="edProblems" aria-label="${counts}" title="${counts} from the Go compiler (F8: go to the next one)"><span class="${st.errors ? 'ed-bad' : ''}">${SVG.err}</span>${st.errors || 0}<span class="${st.warnings ? 'ed-warn' : ''}">${SVG.warn}</span>${st.warnings || 0}</button>${live}<span class="sp"></span>`
+    + `<span>Ln ${st.line}, Col ${st.col}${st.sel ? ` (${st.sel} cursors)` : ''}</span><span>Tab Size: 4</span><span>UTF-8</span><span>LF</span><span>{ } Go</span><span>${esc(S.index.go)}</span>`;
+  const p = S.index.projects[project];
+  $('#edCrumbs').innerHTML = p ? `${esc(p.bin)}<span class="c-sep">›</span>main.go${st.func ? `<span class="c-sep">›</span><span class="c-fn">${SVG.fn}${esc(st.func)}</span>` : ''}` : '';
 }
 
 // ── code: one project (a main.go that builds one command) at a time ──
@@ -79,7 +87,7 @@ S.openCode = async (name, labId) => {
   const p = S.index.projects[name]; project = name; activeLab = labId || (LABS[activeLab]?.project === name ? activeLab : null);
   S.store.project = name; S.save();
   editor.value = S.store.code[name] ?? await source(p.file);
-  $('#codeName').textContent = `main.go → ${p.bin}`; $('#runChecks').hidden = !activeLab; $('#problems').hidden = true;
+  $('#codeName').textContent = `main.go → ${p.bin}`; $('#codeBin').textContent = '→ ' + p.bin; edStatus(); $('#runChecks').hidden = !activeLab; $('#problems').hidden = true;
   status(built.has(p.bin) ? `Built. The command ${p.bin} is ready on A and B.` : 'Not built yet', built.has(p.bin) ? 'ok' : '');
   tab('code');
 };
@@ -96,7 +104,7 @@ async function build() {
     status('The compiler refused the program', 'bad');
     const lines = r.errors.split('\n').filter(Boolean), probs = [];
     $('#problems').hidden = false;
-    $('#problems').innerHTML = '<div class="p-h">Compiler messages</div>' + lines.map((l) => { const m = /^main\.go:(\d+):(\d+)?:?\s*(.*)/.exec(l); if (m) probs.push({ line: +m[1], col: +(m[2] || 1), msg: m[3] }); return `<a ${m ? `data-l="${m[1]}" data-c="${m[2] || 1}"` : ''}>${esc(l)}</a>`; }).join('');
+    $('#problems').innerHTML = '<div class="p-h"><span>Problems</span> · go build</div>' + lines.map((l) => { const m = /^main\.go:(\d+):(\d+)?:?\s*(.*)/.exec(l); if (m) probs.push({ line: +m[1], col: +(m[2] || 1), msg: m[3] }); return `<a ${m ? `data-l="${m[1]}" data-c="${m[2] || 1}"` : ''}>${esc(l)}</a>`; }).join('');
     editor.setProblems(probs); return null;
   }
   editor.setProblems([]); built.set(p.bin, r.module);
@@ -179,8 +187,8 @@ async function route() {
 
 // ── editor shortcuts ──
 function shortcuts() {
-  const rows = [['Ctrl+Space', 'completion (it also opens while you type; after <code>net.</code> it lists the package)'], ['hover', 'documentation of a function, type or variable'], ['Ctrl+Enter or Ctrl+S', 'build'], ['Shift+Alt+F', 'format with gofmt'],
-    ['Ctrl+F', 'find and replace'], ['Ctrl+D', 'select the next occurrence (several cursors)'], ['Alt+click', 'add a cursor'], ['Ctrl+Alt+G', 'go to line'], ['Ctrl+/', 'comment or uncomment'], ['Tab, Shift+Tab', 'indent, unindent'], ['Ctrl+Z, Ctrl+Shift+Z', 'undo, redo'], ['F8', 'next error or warning'], ['type <code>iferr</code>, <code>forr</code>, <code>openf</code>…', 'snippets']];
+  const rows = [['Ctrl+Space', 'completion (it also opens while you type; after <code>net.</code> it lists the package)'], ['hover', 'the whole documentation of a function, type, variable or package; its blue names open their own documentation'], ['type <code>(</code> after a function', 'its parameters, the one you are typing in bold (Esc hides them)'], ['Ctrl+Enter or Ctrl+S', 'build'], ['Shift+Alt+F', 'format with gofmt'],
+    ['Ctrl+F', 'find and replace'], ['Ctrl+D', 'select the next occurrence (several cursors)'], ['Alt+click', 'add a cursor'], ['Ctrl+Alt+G', 'go to line'], ['Ctrl+/', 'comment or uncomment'], ['Tab, Shift+Tab', 'indent, unindent'], ['Ctrl+Z, Ctrl+Shift+Z', 'undo, redo'], ['F8', 'next error or warning (or click the counts in the status bar)'], ['type <code>iferr</code>, <code>forr</code>, <code>openf</code>…', 'snippets']];
   const m = document.createElement('div'); m.className = 'modal';
   m.innerHTML = `<div class="box"><h3>Editor shortcuts</h3><p class="meta">On a Mac, Ctrl is Cmd. Red underlines come from the real Go compiler, a moment after you stop typing; unused imports and variables show as warnings until you build.</p><table>${rows.map(([k, d]) => `<tr><td>${k.replace(/^([^<]*)$/, (x) => x.split(' or ').map((y) => `<kbd>${y}</kbd>`).join(' or '))}</td><td>${d}</td></tr>`).join('')}</table><div class="row"><button class="btn sm" data-a="close">Close</button></div></div>`;
   document.body.append(m); m.addEventListener('click', (e) => { if (e.target === m || e.target.dataset.a === 'close') m.remove(); });
@@ -225,6 +233,7 @@ $('#noteBtn').addEventListener('click', () => {
   $('#build').addEventListener('click', build);
   $('#runChecks').addEventListener('click', () => activeLab && S.runChecks(activeLab));
   $('#resetCode').addEventListener('click', async () => { if (!confirm('Replace your code with the starting code of this program?')) return; delete S.store.code[project]; S.save(); editor.value = await source(S.index.projects[project].file); });
+  $('#edStatus').addEventListener('click', (e) => { if (e.target.closest('#edProblems')) editor.nextProblem(); });
   $('#problems').addEventListener('click', (e) => { const a = e.target.closest('a[data-l]'); if (a) editor.goto(+a.dataset.l, +a.dataset.c); });
   boot();
   const p = S.index.projects[S.store.project] ? S.store.project : 'gosock';

@@ -127,20 +127,20 @@ const docText = () => page.evaluate(() => window.gosock.editor.value);
 test('IDE: live compiler errors and warnings, with the message on hover', async () => {
   await ideDoc(BASE.replace('@@', 'y := nope(1)@@'));
   await page.waitForSelector('.cm-lintRange-error', { timeout: 10000 });
-  await page.waitForFunction(() => /error/.test(document.querySelector('#edStatus').textContent));
+  await page.waitForFunction(() => /^1 error/.test(document.querySelector('#edProblems')?.getAttribute('aria-label')));
   await page.locator('.cm-lintRange-error').first().hover(); await page.waitForSelector('.cm-tooltip-lint');
   assert.match(await page.locator('.cm-tooltip-lint').innerText(), /undefined: nope/);
   await shot('ide-diagnostic');
   await ideDoc(BASE.replace('@@', 'y := 1@@'));                  // an unused variable is only a warning
   await page.waitForSelector('.cm-lintRange-warning', { timeout: 10000 });
-  assert.match(await page.locator('#edStatus').innerText(), /1 warning/);
-  await ideDoc(BASE); await page.waitForFunction(() => /no errors/.test(document.querySelector('#edStatus').textContent), null, { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelector('#edProblems')?.getAttribute('aria-label') === '0 errors, 1 warning');
+  await ideDoc(BASE); await page.waitForFunction(() => document.querySelector('#edProblems')?.getAttribute('aria-label') === '0 errors, 0 warnings' && !/checking/.test(document.querySelector('#edStatus').textContent), null, { timeout: 10000 });
 });
 test('IDE: completion after a package name, and the import is added', async () => {
   await ideDoc(BASE.replace('@@', 'ln, err := net.@@'));
   await page.keyboard.press('Control+Space'); await page.waitForSelector('.cm-tooltip-autocomplete');
   const list = await page.locator('.cm-tooltip-autocomplete').innerText(); assert.match(list, /Listen/); assert.match(list, /Dial/);
-  await page.keyboard.type('Lis'); await shot('ide-complete');
+  await page.keyboard.type('Lis'); await page.waitForTimeout(150); await shot('ide-complete');
   assert.match(await page.locator('.cm-tooltip-autocomplete [aria-selected]').innerText(), /^Listen/);
   await page.keyboard.press('Enter');
   const t = await docText(); assert.match(t, /import \(\n\t"fmt"\n\t"net"\n\)/); assert.match(t, /ln, err := net\.Listen\n/);
@@ -158,17 +158,58 @@ test('IDE: snippets and plain-word completion', async () => {
   await page.keyboard.press('Control+Space'); await page.waitForFunction(() => /check an error/.test(document.querySelector('.cm-tooltip-autocomplete')?.innerText || '')); await page.waitForTimeout(200); await page.keyboard.press('Enter');   // CodeMirror ignores Enter in the first 75 ms of a popup
   assert.match(await docText(), /\tif err != nil \{\n\t\treturn err\n\t\}/);
 });
-test('IDE: hover documentation', async () => {
-  await ideDoc('package main\n\nimport (\n\t"io"\n\t"os"\n)\n\nfunc main() {\n\tf, _ := os.Open("x")\n\tio.Copy(f, f)\n\tf.Close()\n}\n');
-  const hoverWord = async (word, nth = 0) => {
-    const box = await page.evaluate(([w, n]) => { const v = window.gosock.editor.view; const at = [...v.state.doc.toString().matchAll(new RegExp('\\b' + w + '\\b', 'g'))][n].index + 1; const r = v.coordsAtPos(at); return { x: r.left, y: r.top + 5 }; }, [word, nth]);
-    await page.mouse.move(0, 0); await page.mouse.move(box.x, box.y); await page.waitForSelector('.cm-tooltip-hover', { timeout: 5000 });
-    return page.locator('.cm-tooltip-hover').innerText();
-  };
-  assert.match(await hoverWord('Copy'), /func Copy\(dst Writer, src Reader\) \(written int64, err error\)\s+Copy copies from src to dst/);
+const hoverAt = async (word, nth = 0) => {
+  const box = await page.evaluate(([w, n]) => { const v = window.gosock.editor.view; const at = [...v.state.doc.toString().matchAll(new RegExp('\\b' + w + '\\b', 'g'))][n].index + 1; const r = v.coordsAtPos(at); return { x: r.left, y: r.top + 5 }; }, [word, nth]);
+  await page.mouse.move(0, 0); await page.waitForSelector('.cm-tooltip-hover', { state: 'detached', timeout: 3000 }).catch(() => {});
+  await page.mouse.move(box.x, box.y); await page.waitForSelector('.cm-tooltip-hover', { timeout: 5000 });
+  return page.locator('.cm-tooltip-hover').innerText();
+};
+test('IDE: hover shows the signature as gopls writes it and the whole documentation', async () => {
+  await ideDoc('package main\n\nimport (\n\t"io"\n\t"net"\n\t"os"\n)\n\n// copyAll copies.\n//\n// It is ours.\nfunc copyAll(dst, src string) error {\n\tln, err := net.Listen("tcp", ":9000")\n\tf, _ := os.Open("x")\n\tio.Copy(f, f)\n\tf.Close()\n\tln.Close()\n\treturn err\n}\n\nfunc main() {\n\tcopyAll("a", "b")\n\t_ = len("x")\n}\n');
+  let h = await hoverAt('Listen');
+  assert.match(h, /^func net\.Listen\(network string, address string\) \(net\.Listener, error\)\n/);
+  assert.match(h, /The network must be "tcp", "tcp4", "tcp6", "unix" or "unixpacket"\./);            // not only the first sentence
+  assert.match(h, /See func Dial for a description/); assert.match(h, /pkg\.go\.dev\/net#Listen/);
   await shot('ide-hover');
-  assert.match(await hoverWord('Close'), /func \(f \*File\) Close\(\) error/);
-  assert.match(await hoverWord('f', 0), /f: os\.File/);
+  await page.locator('.cm-tooltip-hover a', { hasText: /^Dial$/ }).click();                          // a [Dial] link opens Dial in place
+  await page.waitForFunction(() => /func net\.Dial\(network string/.test(document.querySelector('.cm-tooltip-hover')?.innerText));
+  await page.locator('.cm-tooltip-hover .cm-doc-back').click();
+  await page.waitForFunction(() => /func net\.Listen\(/.test(document.querySelector('.cm-tooltip-hover')?.innerText));
+  assert.match(await hoverAt('Copy'), /^func io\.Copy\(dst io\.Writer, src io\.Reader\) \(written int64, err error\)\n[\s\S]*If src implements WriterTo/);
+  assert.match(await hoverAt('Close'), /^func \(f \*os\.File\) Close\(\) error/);
+  assert.match(await hoverAt('Close', 1), /^func \(net\.Listener\) Close\(\) error/);
+  assert.match(await hoverAt('f', 0), /^var f os\.File\n[\s\S]*File represents an open file descriptor/);
+  assert.match(await hoverAt('len'), /^func len\(v Type\) int\n[\s\S]*The len built-in function/);
+  assert.match(await hoverAt('copyAll', 1), /^func copyAll\(dst string, src string\) error\n+copyAll copies\.\n+It is ours\./);
+  assert.match(await hoverAt('net', 1), /^package net \("net"\)\n+Package net provides a portable interface/);
+});
+test('IDE: signature help while typing the arguments of a call', async () => {
+  await ideDoc('package main\n\nimport (\n\t"fmt"\n\t"net"\n\t"os"\n)\n\nfunc send(addr, path string, n int) error { return nil }\n\nfunc main() {\n\t@@\n\tfmt.Println(net.Listen, os.Stdout)\n}\n');
+  const sig = () => page.waitForSelector('.cm-sighelp', { timeout: 5000 }).then(() => page.evaluate(() => ({ text: document.querySelector('.cm-sighelp pre').textContent, active: document.querySelector('.cm-sig-active')?.textContent })));
+  await page.keyboard.type('ln, err := net.Listen(');
+  let s = await sig(); assert.equal(s.text, 'Listen(network string, address string) (net.Listener, error)'); assert.equal(s.active, 'network string');
+  assert.match(await page.locator('.cm-sighelp').innerText(), /Listen announces on the local network address\./);
+  await page.keyboard.type('"tcp", ');
+  s = await sig(); assert.equal(s.active, 'address string');
+  await shot('ide-sighelp');
+  await page.keyboard.type('fmt.Sprint(1, ');                                                      // a call inside the call: its own signature
+  s = await sig(); assert.match(s.text, /^Sprint\(a \.\.\.any\) string$/); assert.equal(s.active, 'a ...any');
+  await page.keyboard.type('2)');                                                                   // out of it: back to Listen, still the 2nd parameter
+  s = await sig(); assert.match(s.text, /^Listen\(/); assert.equal(s.active, 'address string');
+  await page.keyboard.press('Escape'); await page.waitForSelector('.cm-sighelp', { state: 'detached' });
+  await page.keyboard.type(')'); await page.keyboard.press('Enter');
+  await page.keyboard.type('send("a", "b", ');                                                      // the program's own function
+  s = await sig(); assert.equal(s.text, 'send(addr string, path string, n int) error'); assert.equal(s.active, 'n int');
+  await page.keyboard.type('3)'); await page.waitForSelector('.cm-sighelp', { state: 'detached' });
+  await page.keyboard.press('Enter'); await page.keyboard.type('ln.Accept(');
+  s = await sig(); assert.equal(s.text, 'Accept() (net.Conn, error)');
+});
+test('IDE: the breadcrumbs and the status bar follow the cursor', async () => {
+  await ideDoc('package main\n\nfunc recv() {\n\t@@\n}\n\nfunc main() {}\n');
+  await page.waitForFunction(() => /recv$/.test(document.querySelector('#edCrumbs').textContent));
+  assert.match(await page.locator('#edStatus').innerText(), /Ln 4, Col 2/);
+  await page.evaluate(() => window.gosock.editor.view.dispatch({ selection: { anchor: 0 } }));
+  await page.waitForFunction(() => /main\.go$/.test(document.querySelector('#edCrumbs').textContent));
 });
 test('IDE: gofmt keeps the cursor line, refuses code that does not parse', async () => {
   await ideDoc('package main\nimport "fmt"\nfunc   main( ) {\nfmt.Println( "x" )@@\n}\n');
@@ -194,7 +235,7 @@ test('reboot gives fresh machines and keeps built programs', async () => {
 });
 
 let failed = 0;
-for (const [name, fn] of tests) {
+for (const [name, fn] of tests.filter(([n]) => !process.env.ONLY || n.includes(process.env.ONLY))) {
   const t0 = Date.now(); errors.length = 0;
   try { await fn(); assert.deepEqual(errors, [], 'browser errors'); console.log(`ok    ${name} (${Date.now() - t0} ms)`); }
   catch (e) { failed++; console.log(`FAIL  ${name}\n`, e.message.slice(0, 1500)); await page.screenshot({ path: `${SHOTS || '/tmp'}/fail-${failed}.png` }).catch(() => {}); }
