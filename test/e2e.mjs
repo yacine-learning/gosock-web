@@ -115,6 +115,98 @@ test('pages "send", "fd", "box": real transfer, live kernel view, strace counts'
   console.log('      B made', reads, 'read calls;', (await sh('A', 'cat send.trace')).split('\n').length, 'lines in send.trace');
   assert.match(await sh('A', 'strace cat /tmp/hello.txt'), /openat\(AT_FDCWD, "\/tmp\/hello.txt", O_RDONLY\|O_CLOEXEC\) = 3\nread\(3, "hello from machine A\\n", 131072\) = 21\nhello from machine A\nwrite\(1, "hello from machine A\\n", 21\) = 21\nread\(3, "", 131072\) = 0\nclose\(3\) = 0/);
 });
+// ── module 2 ──
+const buildProject = async (p, src) => {
+  await page.evaluate((p) => window.gosock.S.openCode(p), p); if (src) await setCode(src);
+  await page.locator('#build').click(); await page.waitForFunction(() => /ready on A and B|refused/.test(document.querySelector('#buildStatus').textContent), null, { timeout: 60000 });
+  assert.match(await page.locator('#buildStatus').innerText(), /ready on A and B/, 'build of ' + p);
+};
+const typeIn = (m, line) => page.evaluate(([m, line]) => window.gosock.terms[m].submit(line), [m, line]);
+const ctrlD = (m) => page.evaluate((m) => window.gosock.terms[m].shell.eof(), m);
+const rawcopySol = fs.readFileSync('course/02/rawcopy.solution.go', 'utf8');
+test('module 2 check: one question at a time, no correction until the end, then grade and corrections', async () => {
+  await open('#/p/check2'); const q = page.locator('g-quiz');
+  await q.locator('[data-a="start"]').click();
+  for (let i = 0; i < 8; i++) {
+    assert.match(await q.locator(".pr-k").innerText(), new RegExp(`Question ${i + 1} of 8`, "i"));
+    assert.equal(await q.locator('.qz-why').count(), 0, 'no correction before the end');
+    assert.equal(await q.locator('[data-a="next"]').isDisabled(), true);
+    await q.locator('.pr-opt').first().click(); await q.locator('[data-a="next"]').click();
+  }
+  const res = await q.innerText(); assert.match(res, /\d \/ 8/); assert.match(res, /No pass/); assert.match(res, /go over module 1 one more time/);
+  assert.equal(await q.locator('.qz-c').count(), 8); assert.ok(await q.locator('.qz-c.wrong').count() > 0);
+  assert.equal(await page.evaluate(() => window.gosock.S.store.done.check2), true);
+  await shot('quiz-result');
+  // the right answers: a pass
+  await q.locator('[data-a="start"]').click();
+  for (const k of ['b', 'c', 'a', 'd', 'b', 'c', 'a', 'd']) { await q.locator(`.pr-opt[data-k="${k}"]`).click(); await q.locator('[data-a="next"]').click(); }
+  assert.match(await q.innerText(), /8 \/ 8\s+Pass/);
+});
+test('pages "raw", "errno", "short": rawcat traced, errors, a short read and a short write', async () => {
+  await open('#/p/raw'); await buildProject('rawcat');
+  assert.match(await sh('A', 'strace rawcat /tmp/hello.txt'), /openat\(AT_FDCWD, "\/tmp\/hello.txt", O_RDONLY\|O_CLOEXEC\) = 3\nread\(3, "hello from machine A\\n", 4096\) = 21\nhello from machine A\nwrite\(1, "hello from machine A\\n", 21\) = 21\nread\(3, "", 4096\) = 0\nclose\(3\) = 0/);
+  await open('#/p/errno'); const click = (n) => page.locator('.cmd-run').nth(n).click();
+  await click(0); await idle('A'); assert.match(await out('A'), /rawcat: open \/nope: no such file or directory \(errno 2\)/);
+  assert.match(await sh('A', 'strace rawcat /nope'), /openat\(AT_FDCWD, "\/nope", O_RDONLY\|O_CLOEXEC\) = -1 ENOENT \(No such file or directory\)/);
+  assert.match(await sh('A', 'rawcat /tmp'), /rawcat: read: is a directory \(errno 21\)/);
+  assert.match(await sh('A', 'cat /nope'), /No such file or directory/);
+  await open('#/p/short');
+  await page.locator('.cmd-run').nth(0).click(); await page.waitForTimeout(300);
+  await typeIn('A', 'one'); await page.waitForTimeout(150); await typeIn('A', 'two words'); await page.waitForTimeout(150); await ctrlD('A'); await idle('A');
+  const o = await out('A'); assert.match(o, /"one\\n", 4096\) = 4/); assert.match(o, /"two words\\n", 4096\) = 10/); assert.match(o, /read\(0, "", 4096\) = 0/);
+  await page.locator('.cmd-run').nth(1).click(); await idle('A'); assert.match(await out('A'), /\/dev\/vdb\s+1M\s+20K\s+1004K\s+2% \/mnt\/small/);
+  await page.locator('.cmd-run').nth(2).click(); await idle('A');
+  const w = await out('A'); assert.match(w, /write\(4, ".*"(\.\.\.)?, 131072\) = 110592\n/); assert.match(w, /write\(4, ".*"(\.\.\.)?, 20480\) = -1 ENOSPC \(No space left on device\)/); assert.match(w, /cp: error writing '\/mnt\/small\/big.bin': No space left on device/);
+});
+test('lab rawcopy: the starting code fails, the solution passes, the page commands work', async () => {
+  await open('#/p/rawcopy');
+  let r = await checks('rawcopy'); assert.equal(r.passed, false);
+  for (const k of 'ABDEF') assert.equal(r.res[k].state, 'fail', 'starter, check ' + k);
+  await setCode(rawcopySol); r = await checks('rawcopy');
+  assert.deepEqual(Object.entries(r.res).filter(([, v]) => v.state !== 'pass'), []); assert.ok(r.passed);
+  await sh('A', 'rm /mnt/small/big.bin');
+  for (let n = 0; n < 3; n++) { await page.locator('.cmd-run').nth(n).click(); await idle('A'); }
+  const o = await out('A'); assert.match(o, /copied 2097152 bytes/); assert.equal((o.match(new RegExp(SHA, 'g')) || []).length >= 2, true);
+  assert.match(o, /rawcopy: write \/mnt\/small\/big.copy: no space left on device/);
+});
+const mutRC = (from, to) => { assert.ok(rawcopySol.includes(from), 'mutation anchor: ' + from); return rawcopySol.replace(from, to); };
+const MUT2 = [
+  ['rawcopy ignores short writes', mutRC('\tfor len(b) > 0 {\n\t\tn, err := syscall.Write(fd, b)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\tb = b[n:]\n\t}\n\treturn nil', '\t_, err := syscall.Write(fd, b)\n\treturn err'), /F/],
+  ['rawcopy ignores write errors', mutRC('\t\tif err := writeAll(out, buf[:n]); err != nil {\n\t\t\treturn total, fmt.Errorf("write %s: %w", dst, err)\n\t\t}', '\t\twriteAll(out, buf[:n])'), /E/],
+  ['rawcopy opens the destination first', mutRC('\tin, err := syscall.Open(src, syscall.O_RDONLY, 0)\n\tif err != nil {\n\t\treturn 0, fmt.Errorf("open %s: %w", src, err)\n\t}\n\tdefer syscall.Close(in)\n', '').replace('\tdefer syscall.Close(out)\n', '\tdefer syscall.Close(out)\n\tin, err := syscall.Open(src, syscall.O_RDONLY, 0)\n\tif err != nil {\n\t\treturn 0, fmt.Errorf("open %s: %w", src, err)\n\t}\n\tdefer syscall.Close(in)\n'), /D/],
+  ['rawcopy forgets O_TRUNC', mutRC('syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC', 'syscall.O_WRONLY|syscall.O_CREAT'), /B/],
+  ['rawcopy reads with os.ReadFile', mutRC('\tbuf := make([]byte, 64*1024)\n', '\tbuf := make([]byte, 64*1024)\n\tif _, err := os.ReadFile(src); err != nil {\n\t\treturn 0, err\n\t}\n'), /C/],
+];
+for (const [name, src, expect] of MUT2) test(`mutation caught: ${name}`, async () => {
+  await open('#/p/rawcopy'); await setCode(src);
+  const r = await checks('rawcopy'); assert.equal(r.passed, false);
+  const failed = Object.entries(r.res).filter(([, v]) => v.state === 'fail').map(([k, v]) => k + ': ' + v.msg);
+  assert.match(failed.map((f) => f[0]).join(''), expect, failed.join('\n')); console.log('      ' + failed.find((f) => expect.test(f[0])).slice(0, 170));
+});
+test('pages "offsets", "cache", "dirty", "leak": shared offsets, the page cache, dirty pages, EMFILE', async () => {
+  await open('#/p/offsets'); await buildProject('offsets');
+  await page.locator('.tab[data-tab="machines"]').click();
+  await page.locator('.cmd-run').nth(0).click(); await page.waitForTimeout(800);
+  let o = await out('A');
+  assert.match(o, /a=3 b=4 c=5 \(c is a dup of a\)\nread a -> "hello"\nread b -> "hello"\nread c -> " from"\nread a -> " mach"\nseek c to 0\nread a -> "hello"/);
+  const kv = await page.locator('#kview').innerText(); assert.match(kv, /3\s*file\s*\/tmp\/hello.txt\s+offset 5 B of 21 B/); assert.match(kv, /5\s*file\s*\/tmp\/hello.txt\s+offset 5 B of 21 B/); assert.match(kv, /4\s*file\s*\/tmp\/hello.txt\s+offset 5 B of 21 B/);
+  await shot('offsets-kview');
+  await typeIn('A', ''); await idle('A');
+  await open('#/p/cache'); await sh('A', 'echo 3 | sudo tee /proc/sys/vm/drop_caches');      // earlier tests read big.bin
+  const times = [];
+  for (let n = 0; n < 7; n++) { await page.locator('.cmd-run').nth(n).click(); await idle('A', 30000); const t = /real\t0m([\d.]+)s\n[^\n]*$/.exec(await out('A')); if ([1, 2, 6].includes(n)) times.push(+t[1]); }
+  o = await out('A');
+  assert.match(o, /0B\s+0\s+2M \/tmp\/big.bin[\s\S]*2M\s+512\s+2M \/tmp\/big.bin/); assert.match(o, /buff\/cache/);
+  assert.ok(times[0] > 3 * times[1] && times[2] > 3 * times[1], 'cold, warm, cold again: ' + times.join(', '));
+  await open('#/p/dirty');
+  for (let n = 0; n < 4; n++) { await page.locator('.cmd-run').nth(n).click(); await idle('A'); }
+  o = await out('A'); assert.match(o, /Cached:\s+\d+ kB\nDirty:\s+[1-9]\d* kB[\s\S]*real[\s\S]*Dirty:\s+0 kB/);
+  await open('#/p/leak'); await buildProject('leak');
+  assert.match(await sh('A', 'leak'), /open number 1022 failed: open \/etc\/hostname: too many open files/);
+  await sh('A', 'strace -o leak.trace leak', 30000);
+  assert.equal((await sh('A', 'grep -c openat leak.trace')).trim(), '1022');
+  assert.match(await sh('A', 'grep EMFILE leak.trace'), /^openat\(AT_FDCWD, "\/etc\/hostname", O_RDONLY\|O_CLOEXEC\) = -1 EMFILE \(Too many open files\)/);
+});
 // ── IDE features, driven with the keyboard as a student would ──
 const ideDoc = async (src) => {                                  // '@@' marks where the cursor goes
   await open('#/p/go'); await page.locator('.tab[data-tab="code"]').click();
@@ -285,7 +377,7 @@ test('reboot gives fresh machines and keeps built programs', async () => {
 });
 
 let failed = 0;
-for (const [name, fn] of tests.filter(([n]) => !process.env.ONLY || n.includes(process.env.ONLY))) {
+for (const [name, fn] of tests.filter(([n]) => !process.env.ONLY || process.env.ONLY.split('|').some((o) => n.includes(o)))) {
   const t0 = Date.now(); errors.length = 0;
   try { await fn(); assert.deepEqual(errors, [], 'browser errors'); console.log(`ok    ${name} (${Date.now() - t0} ms)`); }
   catch (e) { failed++; console.log(`FAIL  ${name}\n`, e.message.slice(0, 1500)); await page.screenshot({ path: `${SHOTS || '/tmp'}/fail-${failed}.png` }).catch(() => {}); }

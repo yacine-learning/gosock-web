@@ -1,0 +1,36 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li><code>write</code> to a file copies into the page cache and returns: the pages are <b>dirty</b>, newer than the disk.</li>
+<li>The kernel writes them back later: after about 30 seconds, or when memory is short, or when asked. <code>fsync(fd)</code> (Go: <code>f.Sync()</code>) waits until one file is on the disk; <code>sync</code> does it for all.</li>
+<li>"<code>write</code> returned" means "the kernel has it", not "the disk has it".</li>
+</ul></div>
+
+<g-anim scene="page-cache"></g-anim>
+
+<details class="fold more"><summary>Why the kernel waits, and what it costs</summary>
+<p>Waiting lets the kernel group many small writes into a few large ones, and skip writing data that is overwritten or deleted before it reaches the disk. Programs get fast <code>write</code>s.</p>
+<p>The price is a window during which a power cut loses data that <code>write</code> said was written. Databases and editors that must not lose your work call <code>fsync</code> at the moments that matter, and accept that it is slow: it waits for the disk.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<g-cmd m="A">
+$ cp /tmp/big.bin /tmp/copy.bin
+$ grep -E 'Cached|Dirty' /proc/meminfo
+$ time sync
+$ grep Dirty /proc/meminfo
+</g-cmd>
+<p>Copy once more, then do nothing for 40 seconds and look again:</p>
+<g-cmd m="A">
+$ cp /tmp/big.bin /tmp/copy2.bin
+$ grep Dirty /proc/meminfo
+$ sleep 40; grep Dirty /proc/meminfo
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>Right after <code>cp</code>, 2048 kB are dirty: the copy "finished" before the disk saw it.</li>
+<li><code>sync</code> took time, because it waited for the disk; then Dirty is 0.</li>
+<li>Left alone, Dirty also fell to 0, by itself, about 30 seconds later.</li>
+</ul>
+</div>

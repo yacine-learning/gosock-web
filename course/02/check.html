@@ -1,0 +1,53 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>Eight questions on module 1, one at a time. You see nothing until the end; then your grade, every correction, and a recommendation.</li>
+<li>It is a check, not a gate: you can start this module whatever the result.</li>
+</ul></div>
+
+<g-quiz id="m2" pass="75" about="module 1">
+<g-qq correct="b"><g-q>What is a file descriptor?</g-q>
+  <g-o k="a">The number of the file on the disk (its inode number).</g-o>
+  <g-o k="b">A slot number in a table the kernel keeps for each process.</g-o>
+  <g-o k="c">The position in the file where the next read starts.</g-o>
+  <g-o k="d">A number shared by every process that opens the same file.</g-o>
+  <g-why><p>The kernel keeps one table per process; the descriptor is the index. The position (the offset) lives in the open file description the slot points to, not in the number.</p></g-why></g-qq>
+<g-qq correct="c"><g-q>On this course's machines, a program opens its first file. Which descriptor does it get?</g-q>
+  <g-o k="a">0</g-o><g-o k="b">1</g-o><g-o k="c">3</g-o><g-o k="d">It depends on the file's name.</g-o>
+  <g-why><p>0, 1 and 2 are standard input, output and error, and the kernel always gives the lowest free number: 3.</p></g-why></g-qq>
+<g-qq correct="a"><g-q>Plain <code>nc</code> sent the whole file, yet the receiving <code>nc</code> never exited. Why?</g-q>
+  <g-o k="a">Nothing told the receiver the stream had ended: the sender never closed its sending side.</g-o>
+  <g-o k="b">The last segment was lost and had to be sent again.</g-o>
+  <g-o k="c">The receiver's buffer was full.</g-o>
+  <g-o k="d">TCP needs an explicit message saying how long the file is.</g-o>
+  <g-why><p>TCP has no "end of file" inside the data. The end is a FIN, sent when the sender closes (or shuts down) its side; <code>-N</code> made <code>nc</code> do that.</p></g-why></g-qq>
+<g-qq correct="d"><g-q><code>read</code> on a socket returns 0. What does it mean?</g-q>
+  <g-o k="a">No data has arrived yet; try again.</g-o>
+  <g-o k="b">An error; look at errno.</g-o>
+  <g-o k="c">The buffer you gave was too small.</g-o>
+  <g-o k="d">The other side closed: there will be no more data.</g-o>
+  <g-why><p>0 means end of stream (end of file, for a file). A read with no data yet does not return: it waits.</p></g-why></g-qq>
+<g-qq correct="b"><g-q>A server made with <code>net.Listen</code> has accepted one client. How many sockets does it hold?</g-q>
+  <g-o k="a">One: the client's connection replaced the listener.</g-o>
+  <g-o k="b">Two: the listening socket, and a new one for the connection.</g-o>
+  <g-o k="c">Three: listening, sending and receiving.</g-o>
+  <g-o k="d">None: sockets belong to the kernel, not to the program.</g-o>
+  <g-why><p><code>Accept</code> returns a new socket (a new descriptor) for each connection; the listening socket keeps listening.</p></g-why></g-qq>
+<g-qq correct="c"><g-q>Tracing <code>gosock send</code>, the 2 MB of the file went to the kernel through…</g-q>
+  <g-o k="a">many <code>read</code> and <code>write</code> pairs.</g-o>
+  <g-o k="b">one big <code>write</code>.</g-o>
+  <g-o k="c"><code>sendfile</code>, from the file's descriptor to the socket's, without passing through the program.</g-o>
+  <g-o k="d"><code>splice</code> through a pipe.</g-o>
+  <g-why><p>Go saw a file going to a TCP connection and asked for <code>sendfile</code>. The receiving side, in this simulator, used <code>read</code> and <code>write</code> pairs.</p></g-why></g-qq>
+<g-qq correct="a"><g-q>What does <code>defer f.Close()</code> do?</g-q>
+  <g-o k="a">It closes <code>f</code> when the surrounding function returns, whichever way it returns.</g-o>
+  <g-o k="b">It closes <code>f</code> right now, but lets the program continue.</g-o>
+  <g-o k="c">It closes <code>f</code> when the program exits.</g-o>
+  <g-o k="d">It closes <code>f</code> only if an error happened.</g-o>
+  <g-why><p>A deferred call runs when the function returns, on every path: a normal return or an error return.</p></g-why></g-qq>
+<g-qq correct="d"><g-q>The kernel view shows <code>gosock recv</code> "in the kernel, inside <code>accept</code>". What is the program doing?</g-q>
+  <g-o k="a">Checking for a connection again and again, using the CPU.</g-o>
+  <g-o k="b">Running kernel code by itself.</g-o>
+  <g-o k="c">It has crashed and the kernel holds what is left.</g-o>
+  <g-o k="d">Sleeping in a system call; the kernel wakes it when a connection is ready.</g-o>
+  <g-why><p>A blocking call puts the program to sleep inside the kernel. No CPU is used until the kernel has something to return.</p></g-why></g-qq>
+</g-quiz>

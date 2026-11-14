@@ -122,7 +122,7 @@ S.runChecks = async (labId) => {
   if (!module) { S.toast('The program does not compile yet: the compiler messages are under the code.'); return; }
   tab('code'); status('Running the checks…');
   $('#runChecks').disabled = true;
-  const ok = await runLab(labId, module, (id, state, msg) => { st.res[id] = { state, msg }; card?.redraw(); });
+  const ok = await runLab(labId, module, (id, state, msg) => { st.res[id] = { state, msg }; card?.redraw(); }, editor.value);
   $('#runChecks').disabled = false; st.passed = ok; S.save(); card?.redraw();
   const n = Object.values(st.res).filter((r) => r.state === 'pass').length;
   status(ok ? `All ${lab.tests.length} checks pass.` : `${n} of ${lab.tests.length} checks pass: the page says what each failing one saw.`, ok ? 'ok' : 'bad');
@@ -130,10 +130,13 @@ S.runChecks = async (labId) => {
   card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 };
 S.solution = async (labId) => {
-  const lab = LABS[labId], lines = (await source(S.index.projects[lab.project].solution)).split('\n');
-  let i = lines.findIndex((l) => l.startsWith(lab.solution[0])), j = lines.indexOf('}', i);
-  while (i > 0 && lines[i - 1].startsWith('//')) i--;         // keep the comment above the function
-  return lines.slice(i, j + 1).join('\n');
+  const lab = LABS[labId], lines = (await source(S.index.projects[lab.project].solution)).split('\n'), parts = [];
+  for (const sol of [lab.solution, lab.solution2].filter(Boolean)) {
+    let i = lines.findIndex((l) => l.startsWith(sol[0])), j = lines.indexOf('}', i);
+    while (i > 0 && lines[i - 1].startsWith('//')) i--;         // keep the comment above the function
+    parts.push(lines.slice(i, j + 1).join('\n'));
+  }
+  return parts.join('\n\n');
 };
 const labItem = (labId) => items().find((it) => it.lab === labId)?.id;
 

@@ -1,0 +1,34 @@
+<g-callout type="warn"><p>A bug on purpose: a program that opens files and never closes them.</p></g-callout>
+
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>A process may hold a limited number of descriptors: 1024 by default on Linux (<code>ulimit -n</code>).</li>
+<li>Past the limit, <code>open</code>, <code>socket</code> and <code>accept</code> fail with <code>EMFILE</code>, "too many open files".</li>
+<li>A forgotten <code>Close</code> is invisible at first: each leak costs one slot, and the program fails much later, far from the bug.</li>
+</ul></div>
+
+<g-anim scene="fd-read"></g-anim>
+
+<details class="fold more"><summary>Why there is a limit, and why servers hit it</summary>
+<p>Every slot points to kernel memory (an open file description, perhaps a socket with its buffers). The limit stops one program from eating the kernel's memory. It can be raised (<code>ulimit -n</code>, or <code>LimitNOFILE</code> for a service), and busy servers do raise it, because each client connection is one descriptor.</p>
+<p>That is also why the bug is common in servers: one connection handled without closing it is one descriptor gone. Under real traffic the server runs out after a few hours, and starts refusing everyone with an error that points at <code>accept</code>, not at the missing <code>Close</code>.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<g-example project="leak"><p><code>leak</code> opens <code>/etc/hostname</code> in a loop and keeps every file. Build it, run it, then look at the end of its trace:</p></g-example>
+<g-cmd m="A">
+$ leak
+$ strace -o leak.trace leak
+$ grep -c openat leak.trace
+$ grep EMFILE leak.trace
+$ tail -n 3 leak.trace
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>Open number 1022 failed: descriptors 3 to 1023 were taken (0, 1, 2 were already in use).</li>
+<li>The last <code>openat</code> returned <code>-1 EMFILE (Too many open files)</code>; then the program printed it and exited.</li>
+<li>Nothing failed before that: the bug was there from the first open.</li>
+</ul>
+</div>

@@ -1,0 +1,28 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>Go's <code>syscall</code> package has one function per <g-t k="syscall">system call</g-t>: <code>syscall.Open</code>, <code>Read</code>, <code>Write</code>, <code>Close</code>…</li>
+<li>They speak the kernel's language: a descriptor is a plain <code>int</code>, a read fills <b>your</b> buffer and returns a count, a failure is an error number.</li>
+<li><code>os.File</code> and <code>fmt</code> are layers on top of these calls. The kernel sees the same <code>write</code> either way.</li>
+</ul></div>
+
+<g-anim scene="go-layers"></g-anim>
+
+<details class="fold more"><summary>Why go down a level</summary>
+<p>In module 1 the standard library chose for you: how big each read is, when to retry, which calls to make (it even picked <code>sendfile</code>). That is what you want in real programs. To learn what the kernel does, you want the opposite: nothing between your line of code and the system call. In this module every call you write is exactly one line in <code>strace</code>.</p>
+<p>The <code>syscall</code> package is frozen in Go's standard library; new programs that need raw calls use <code>golang.org/x/sys/unix</code>, which has the same functions with the same names. This page uses <code>syscall</code> because it needs no download.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<g-example project="rawcat"><p><code>rawcat</code> is <code>cat</code> made of four system calls. Open it, read it, build it. Then trace it next to the real <code>cat</code>:</p></g-example>
+<g-cmd m="A">
+$ strace rawcat /tmp/hello.txt
+$ strace cat /tmp/hello.txt
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li><code>rawcat</code>'s trace is its source code, line by line: <code>openat</code>, <code>read(3, …, 4096)</code>, <code>write(1, …)</code>, the <code>read</code> that returns 0, <code>close</code>.</li>
+<li>The 4096 is <b>your</b> buffer size. <code>cat</code> asked for 131072 at a time: a choice, not a rule.</li>
+</ul>
+</div>

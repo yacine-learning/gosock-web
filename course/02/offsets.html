@@ -1,0 +1,50 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>The <g-t k="offset">offset</g-t> (where the next <code>read</code> or <code>write</code> starts) lives in the <b>open file description</b>, not in the descriptor and not in the file.</li>
+<li>Opening a file twice gives two descriptions: two independent offsets. <code>dup</code> gives a second number for the <b>same</b> description: one shared offset.</li>
+<li><code>lseek</code> (<code>syscall.Seek</code>) moves an offset; <code>pread</code> reads at a position without moving it.</li>
+</ul></div>
+
+<g-anim scene="fd-tables"></g-anim>
+
+<details class="fold more"><summary>Where sharing matters</summary>
+<p>A shell running <code>cmd &gt; log 2&gt;&amp;1</code> opens <code>log</code> once and makes descriptor 2 a duplicate of 1. Both share one offset, so the program's output and errors land one after the other instead of overwriting each other. A child process created by <code>fork</code> also shares its parent's descriptions: that is how a shell passes a terminal to every command.</p>
+<p>Two processes that each <code>open</code> the same file have separate offsets and can overwrite each other's bytes, unless they open it with <code>O_APPEND</code>, which moves the offset to the end before every write.</p>
+</details>
+<details class="fold kc"><summary>The offset in simplified kernel C</summary>
+<g-go file="kernel (simplified).c">
+struct file {                    // one per open(): the open file description
+    loff_t f_pos;                // THE offset
+    unsigned f_flags;            // O_RDONLY, O_APPEND, O_NONBLOCK...
+    atomic_long_t f_count;       // how many descriptors point here (dup adds one)
+    struct inode *f_inode;       // the file
+};
+
+int sys_dup(int oldfd) {         // a new slot, the same struct file
+    struct file *f = current->files->fd[oldfd];
+    atomic_long_inc(&f->f_count);
+    return install_lowest_free_fd(f);
+}
+
+off_t sys_lseek(int fd, off_t off, int whence) {
+    struct file *f = current->files->fd[fd];
+    f->f_pos = (whence == SEEK_SET ? 0 : whence == SEEK_CUR ? f->f_pos : i_size(f->f_inode)) + off;
+    return f->f_pos;
+}
+</g-go>
+</details>
+
+<h2 class="run">Run this</h2>
+<g-example project="offsets"><p><code>offsets</code> opens <code>/tmp/hello.txt</code> twice, duplicates the first descriptor, and reads 5 bytes at a time. Build it, run it, and look at A's descriptors in the kernel view before pressing Enter:</p></g-example>
+<g-cmd m="A">
+$ offsets
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li><code>b</code> starts again at "hello": its own offset. <code>c</code> continues where <code>a</code> stopped: " from".</li>
+<li>Moving <code>c</code> back to 0 moved <code>a</code> too.</li>
+<li>In the kernel view, descriptors 3 and 5 always show the same offset.</li>
+</ul>
+</div>

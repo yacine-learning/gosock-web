@@ -1,0 +1,31 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>A failing system call returns <b>-1</b> and an error <b>number</b>, <g-t k="errno">errno</g-t>: 2 is <code>ENOENT</code> (no such file), 21 is <code>EISDIR</code> (is a directory)…</li>
+<li>In Go, that number is the error itself: a <code>syscall.Errno</code>. <code>err.Error()</code> is its text; <code>errors.Is(err, syscall.ENOENT)</code> tests for one failure in particular.</li>
+<li>When <code>err</code> is not nil, the other result is meaningless. Look at <code>err</code> first.</li>
+</ul></div>
+
+<g-anim scene="errno-path"></g-anim>
+
+<details class="fold more"><summary>Where the text comes from</summary>
+<p>The kernel only returns the number (as a negative value, -2 for <code>ENOENT</code>). The C library, or here Go, turns it into "-1 and errno = 2" and keeps a table of texts: "no such file or directory" for 2. <code>strace</code> prints all three: <code>= -1 ENOENT (No such file or directory)</code>.</p>
+<p>Which errors a call can return is part of its contract, listed in its manual page (<code>man 2 open</code>, section ERRORS). Error numbers are the same for every program on the machine, which is why the shell, <code>cat</code> and your Go program print the same words.</p>
+<p>The same failure can arrive at different calls. Opening a directory for reading succeeds; it is the <code>read</code> that fails with <code>EISDIR</code>.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<g-cmd m="A">
+$ rawcat /nope
+$ strace rawcat /nope
+$ rawcat /tmp
+$ cat /nope
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li><code>openat(…) = -1 ENOENT</code>: in the trace, the failure is a result like any other.</li>
+<li><code>rawcat /tmp</code> got through <code>open</code> and failed at <code>read</code>, with errno 21.</li>
+<li><code>cat</code> and <code>rawcat</code> print the same text: it comes from the number.</li>
+</ul>
+</div>

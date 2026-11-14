@@ -96,13 +96,13 @@ export const SCENES = {};
       { cap: '<code>bind(3, 0.0.0.0:9000)</code> attaches the socket to <b>port 9000</b>. If another socket owns that port the call fails with <code>EADDRINUSE</code>.', set: { 'sprog-s': { t: 'bind(3, 0.0.0.0:9000)' }, 's3-s': { t: 'fd 3 · bound to 0.0.0.0:9000' } } },
       { cap: '<code>listen(3, backlog)</code> turns it into a <b>listening socket</b>. From now on the <i>kernel</i> answers handshakes for it, even before the program asks for anyone.', set: { 'sprog-s': { t: 'listen(3, 128)' }, s3: { cls: 'hot' }, 's3-s': { t: 'fd 3 · LISTEN :9000' } } },
       { cap: '<code>accept(3)</code> blocks: the program <b>sleeps</b> in the kernel until a connection is ready. No CPU used while waiting.', set: { 'sprog-s': { t: 'accept(3)  … sleeping' }, sprog: { cls: '' } } },
-      { cap: 'On machine B the client creates its own socket (<code>fd 3</code>) and calls <code>connect(3, A:9000)</code>. The <i>client kernel</i> picks an ephemeral source port and sends a <b>SYN</b>.', set: { 'cprog-s': { t: 'connect(3, 192.168.104.1:9000)' }, cprog: { cls: 'on' }, c3: { o: 1, cls: 'on' }, 'c3-s': { t: 'fd 3 · SYN_SENT (port 47230)' }, syn: { o: 1, ...at(330, 462) } } },
+      { cap: 'On machine B the client creates its own socket (<code>fd 3</code>) and calls <code>connect(3, A:9000)</code>. The <i>client kernel</i> picks an ephemeral source port and sends a <b>SYN</b>.', set: { 'cprog-s': { t: 'connect(3, 10.0.0.1:9000)' }, cprog: { cls: 'on' }, c3: { o: 1, cls: 'on' }, 'c3-s': { t: 'fd 3 · SYN_SENT (port 47230)' }, syn: { o: 1, ...at(330, 462) } } },
       { cap: 'The SYN crosses the network. The <b>server kernel</b> (not the program!) answers with <b>SYN-ACK</b>. The server program is still asleep in <code>accept</code>.', set: { syn: { o: 1, ...at(460, 462) }, synack: { o: 1, ...at(460, 462) } } },
       { cap: 'The client kernel replies <b>ACK</b>. The client socket becomes <b>ESTABLISHED</b>, and <code>connect()</code> returns in the client program.', set: { syn: { o: 0 }, synack: { o: 1, ...at(330, 462) }, ack: { o: 1, ...at(330, 462) }, c3: { cls: 'good' }, 'c3-s': { t: 'fd 3 · ESTABLISHED' }, 'cprog-s': { t: 'connect() returned 0' } } },
       { cap: 'The ACK reaches the server: the connection is complete and waits in the <b>accept queue</b>. <code>accept()</code> wakes up and returns a <b>new fd (4)</b>, a separate socket for this client. <b>fd 3 keeps listening.</b>', set: { ack: { o: 1, ...at(460, 462) }, synack: { o: 0 }, s4: { o: 1, cls: 'good' }, 's4-s': { t: 'fd 4 · ESTABLISHED  (B:47230)' }, 'sprog-s': { t: 'fd = accept(3)  →  4' }, sprog: { cls: 'good' } } },
       { cap: 'Data flows both ways. The client calls <code>write(3, "hello")</code>; the server\'s <code>read(4)</code> gets the bytes from the <b>kernel receive buffer</b>.', set: { ack: { o: 0 }, data: { o: 1, ...at(330, 462) }, 'cprog-s': { t: 'write(3, "hello")' } } },
       { cap: '', set: { data: { o: 1, ...at(450, 462) }, 'sprog-s': { t: 'read(4) → "hello"' } } },
-      { cap: 'The client calls <code>close(3)</code>. Its kernel sends a <b>FIN</b>: "I have no more data". The server will see <code>read</code> return <b>0</b> (end of stream). The teardown states (FIN_WAIT, TIME_WAIT…) are Module 4.', set: { data: { o: 0 }, fin: { o: 1, ...at(330, 462) }, 'cprog-s': { t: 'close(3)' }, c3: { cls: 'bad' }, 'c3-s': { t: 'fd 3 · FIN_WAIT_1' } } },
+      { cap: 'The client calls <code>close(3)</code>. Its kernel sends a <b>FIN</b>: "I have no more data". The server will see <code>read</code> return <b>0</b> (end of stream).', set: { data: { o: 0 }, fin: { o: 1, ...at(330, 462) }, 'cprog-s': { t: 'close(3)' }, c3: { cls: 'bad' }, 'c3-s': { t: 'fd 3 · FIN_WAIT_1' } } },
       { cap: '', set: { fin: { o: 1, ...at(460, 462) }, s4: { cls: 'bad' }, 's4-s': { t: 'fd 4 · CLOSE_WAIT' }, 'sprog-s': { t: 'read(4) → 0 (EOF)' } } },
     ],
   };
@@ -196,7 +196,7 @@ export const SCENES = {};
       { cap: 'Data: the client writes "hello", the server kernel <b>ACKs</b> it (acknowledging bytes, not packets). Sequence numbers count <b>bytes</b>.', set: { ...go('p4'), ...go('p5') } },
       { cap: 'The client calls <code>close()</code>: it sends <b>FIN</b> and enters <b>FIN_WAIT_1</b>. The server ACKs: client → <b>FIN_WAIT_2</b>, server → <b>CLOSE_WAIT</b> (waiting for its own program to close).', set: { cs: { cls: 'hot' }, 'cs-t': { t: 'FIN_WAIT_1 → FIN_WAIT_2' }, ss: { cls: 'hot' }, 'ss-t': { t: 'CLOSE_WAIT' }, ...go('p6'), ...go('p7') } },
       { cap: 'The server program calls <code>close()</code> too: it sends its <b>FIN</b> and goes to <b>LAST_ACK</b>. The client ACKs and enters <b>TIME_WAIT</b>; the server socket disappears (<b>CLOSED</b>).', set: { 'ss-t': { t: 'LAST_ACK → CLOSED' }, ss: { cls: '' }, ...go('p8'), ...go('p9'), cs: { cls: 'bad' }, 'cs-t': { t: 'TIME_WAIT' }, tw: { o: 1 } } },
-      { cap: 'The side that <b>closes first</b> keeps the socket in TIME_WAIT for 60 s, so late packets of the old connection cannot confuse a new one with the same ports. You saw this in Lab 0.4. Then: CLOSED.', set: { 'cs-t': { t: 'CLOSED (after 60 s)' }, cs: { cls: '' } } },
+      { cap: 'The side that <b>closes first</b> keeps the socket in TIME_WAIT for 60 s, so late packets of the old connection cannot confuse a new one with the same ports. Then: CLOSED.', set: { 'cs-t': { t: 'CLOSED (after 60 s)' }, cs: { cls: '' } } },
     ],
   };
 }
@@ -258,7 +258,7 @@ export const SCENES = {};
       { cap: 'Read the same bytes again (or another process does): a <b>cache hit</b>. No disk access at all, just the copy cache → buffer. Microseconds, not hundreds of them.', set: { pc: { cls: 'good' }, 'pgc-t': { t: 'page 0 (HIT)' }, lat: { o: 1, t: 'fast: served from RAM' }, ub: { o: 0 } } },
       { cap: '<code>write(fd, buf, 4096)</code> copies <b>into the page cache</b> and marks the page <b>dirty</b>. <code>write</code> returns <i>immediately</i>: your data is in RAM, not yet on disk!', set: { c2u: { o: 0 }, ub: { o: 1 }, u2c: { o: 1 }, pc: { cls: 'hot' }, 'pgc-t': { t: 'page 0 (DIRTY)' }, lat: { o: 1, t: 'write returns before the disk' } } },
       { cap: 'Later (a timer, memory pressure, or <code>fsync(fd)</code>) the kernel <b>writes the dirty page back</b> to disk. Only <code>fsync</code> tells you the data is durable.', set: { u2c: { o: 0 }, ub: { o: 0 }, c2d: { o: 1 }, disk: { cls: 'good' }, pc: { cls: '' }, 'pgc-t': { t: 'page 0 (clean again)' }, lat: { o: 1, t: 'writeback to disk' } } },
-      { cap: 'This is why <code>cat</code> is fast the second time, and why the kernel has "free" memory that is actually full of cached files. <b>sendfile</b>, which you met in lab 1.6, skips the copy to user space entirely.', set: { c2d: { o: 0 }, disk: { cls: '' }, pc: { cls: 'on' } } },
+      { cap: 'This is why <code>cat</code> is fast the second time, and why the kernel has "free" memory that is actually full of cached files. <b>sendfile</b>, which you met in module 1, skips the copy to user space entirely.', set: { c2d: { o: 0 }, disk: { cls: '' }, pc: { cls: 'on' } } },
     ],
   };
 }
@@ -438,7 +438,7 @@ export const SCENES = {};
       ${B('c2', 60, 142, 260, 50, { edge: 'user', sub: 'formats, adds "\\n"', ssize: 13 })}
       ${B('c3', 60, 204, 260, 50, { edge: 'user', sub: 'os.Stdout.Write(…)', ssize: 13 })}
       ${B('c4', 60, 266, 260, 40, { edge: 'user', sub: 'syscall: write', ssize: 13 })}
-      ${B('r1', 610, 80, 260, 50, { edge: 'a', sub: 'unix.Write(1, []byte("hi\\n"))', ssize: 13 })}
+      ${B('r1', 610, 80, 260, 50, { edge: 'a', sub: 'syscall.Write(1, []byte("hi\\n"))', ssize: 13 })}
       ${B('r4', 610, 266, 260, 40, { edge: 'a', sub: 'syscall: write', ssize: 13 })}
       ${L('d1', 190, 130, 190, 142)}${L('d2', 190, 192, 190, 204)}${L('d3', 190, 254, 190, 266)}
       ${L('e1', 740, 130, 740, 266)}
@@ -451,7 +451,7 @@ export const SCENES = {};
       { cap: '<code>fmt</code> formats the text and adds the newline, in memory. No kernel yet.', set: { c1: { cls: '' }, c2: { o: 1, cls: 'on' }, d1: { o: 1 } } },
       { cap: '<code>os.Stdout</code> is a <b>file</b> for Go: writing to it calls the file\'s <code>Write</code> method.', set: { c2: { cls: '' }, c3: { o: 1, cls: 'on' }, d2: { o: 1 } } },
       { cap: 'Finally Go makes the actual <b>system call</b>, <code>write</code>. Only here does the program cross into the kernel.', set: { c3: { cls: '' }, c4: { o: 1, cls: 'hot' }, d3: { o: 1 }, k1: { o: 1 }, kbox: { o: 1, cls: 'hot' }, kline: { t: 'write(1, "hi\\n", 3) = 3' } } },
-      { cap: 'The package <code>golang.org/x/sys/unix</code> lets you <b>skip the layers</b>: <code>unix.Write</code> is almost the system call itself. You pick the descriptor, you pass the bytes.', set: { c4: { cls: '' }, r1: { o: 1, cls: 'on' }, e1: { o: 1 }, r4: { o: 1, cls: 'hot' }, k2: { o: 1 } } },
+      { cap: 'Go\'s <code>syscall</code> package lets you <b>skip the layers</b>: <code>syscall.Write</code> is the system call itself. You pick the descriptor, you pass the bytes.', set: { c4: { cls: '' }, r1: { o: 1, cls: 'on' }, e1: { o: 1 }, r4: { o: 1, cls: 'hot' }, k2: { o: 1 } } },
       { cap: 'The kernel sees <b>exactly the same call</b>. Both ways end in one <code>write</code>. In this module you use the raw way, so that nothing is hidden: you decide how big each read is, what happens on an error, and what to do when a write is not complete.', set: { kbox: { cls: 'good' }, r1: { cls: '' }, r4: { cls: '' } } },
     ],
   };
@@ -466,7 +466,7 @@ export const SCENES = {};
   SCENES['errno-path'] = {
     title: 'How a failure reaches your code', tag: 'module 2', w: 960, h: 360,
     svg: `${DEFS}
-      ${label(30, 40, 'unix.Open("/nope", O_RDONLY, 0)', { mono: true, size: 14, cls: 't-strong' })}
+      ${label(30, 40, 'syscall.Open("/nope", O_RDONLY, 0)', { mono: true, size: 14, cls: 't-strong' })}
       ${bx('k', 0, 'the kernel', 'no such file', 'kernel', 'returns −2')}
       ${bx('w', 1, 'the wrapper', 'sees a negative', 'user', 'result')}
       ${bx('g', 2, 'your Go code', 'gets two values', 'a', '(fd, err)')}
@@ -478,9 +478,9 @@ export const SCENES = {};
     steps: [
       { cap: 'Your program asks to open a file that does not exist. The <b>kernel</b> looks for it, and cannot find it.', set: { k: { cls: 'hot' } } },
       { cap: 'The kernel answers with a <b>negative number</b>: minus the error code. <code>−2</code> means <code>ENOENT</code>, "no such file or directory". (Raw syscalls return one number: failure is a negative one.)', set: { r: { o: 1, x: 0, y: 0 }, note: { t: 'return value −2  =  ENOENT' } } },
-      { cap: 'The wrapper in <code>x/sys/unix</code> turns that into what Go likes: the result <code>−1</code> and an <b>error value</b>, <code>unix.Errno(2)</code>.', set: { k: { cls: '' }, w: { cls: 'hot' }, a1: { o: 1 }, r: { o: 1, ...at(1) }, 'r-t': { t: 'Errno 2' }, note: { t: 'err = unix.Errno(2)' } } },
+      { cap: 'Go\'s <code>syscall</code> package turns that into what Go likes: the result <code>−1</code> and an <b>error value</b>, <code>syscall.Errno(2)</code>.', set: { k: { cls: '' }, w: { cls: 'hot' }, a1: { o: 1 }, r: { o: 1, ...at(1) }, 'r-t': { t: 'Errno 2' }, note: { t: 'err = unix.Errno(2)' } } },
       { cap: 'You receive <code>fd, err</code>. <b>fd is not usable</b> when err is not nil, so always look at <code>err</code> first.', set: { w: { cls: '' }, g: { cls: 'hot' }, a2: { o: 1 }, r: { o: 1, ...at(2) }, 'r-t': { t: 'err' } } },
-      { cap: '<code>if err != nil</code> is true. <code>err.Error()</code> gives the text, <code>"no such file or directory"</code>, and comparing with <code>unix.ENOENT</code> lets you react to <b>this</b> failure and no other.', set: { g: { cls: '' }, i: { cls: 'bad' }, a3: { o: 1 }, r: { o: 1, ...at(3) }, 'r-t': { t: 'ENOENT' }, note: { t: 'err == unix.ENOENT  →  "no such file or directory"' } } },
+      { cap: '<code>if err != nil</code> is true. <code>err.Error()</code> gives the text, <code>"no such file or directory"</code>, and comparing with <code>syscall.ENOENT</code> lets you react to <b>this</b> failure and no other.', set: { g: { cls: '' }, i: { cls: 'bad' }, a3: { o: 1 }, r: { o: 1, ...at(3) }, 'r-t': { t: 'ENOENT' }, note: { t: 'err == unix.ENOENT  →  "no such file or directory"' } } },
     ],
   };
 }
@@ -508,7 +508,7 @@ export const SCENES = {};
       { cap: 'If your code assumed "no error means everything was written", <b>4 bytes are silently lost</b>. This is one of the most common bugs in network code.', set: { c6: { cls: '' }, note: { t: 'no error was reported. The bytes are simply not sent.' } } },
       { cap: 'The network drains the buffer. There is room again.', set: { c0: { o: 0 }, c1: { o: 0 }, c2: { o: 0 }, c3: { o: 0 }, c4: { o: 0 }, c5: { o: 0 }, note: { t: '' }, call: { t: '' }, ret: { t: '' } } },
       { cap: 'The fix is a <b>loop</b>: keep calling write with what is left, <code>buf[6:]</code>, until nothing is left.', set: { call: { t: 'write(fd, buf[6:], 4)' }, c6: { x: -312, y: KY - CY }, c7: { x: -312, y: KY - CY }, c8: { x: -312, y: KY - CY }, c9: { x: -312, y: KY - CY }, ret: { t: '= 4' }, code: { t: 'for len(p) > 0 { n, err := unix.Write(fd, p); …; p = p[n:] }' } } },
-      { cap: 'This <code>writeAll</code> loop is in every program that writes to a socket, a pipe or a file. You will write it in the next lab.', set: { note: { t: 'every byte is sent, whatever the kernel accepts each time' } } },
+      { cap: 'This <code>writeAll</code> loop belongs in every program that writes to a socket, a pipe or a file.', set: { note: { t: 'every byte is sent, whatever the kernel accepts each time' } } },
     ],
   };
 }
@@ -560,7 +560,7 @@ export const SCENES = {};
       { cap: '50 MB is about 1 500 chunks, so it keeps going …', set: { ...reveal(10, 22), n1: { t: '2 200 calls …' } } },
       { cap: '… and ends at about <b>3 000 syscalls</b>: roughly 1 530 reads and 1 530 writes.', set: { ...reveal(22, 31), n1: { t: '3 058 calls' } } },
       { cap: '<code>cat</code> noticed that both ends are <b>files</b>. It asks the kernel to copy from one to the other with <code>copy_file_range</code>, and the kernel moves the whole file by itself: <b>2 calls</b>.', set: { thin: { o: 1 }, n2: { t: '2 calls' } } },
-      { cap: 'The lesson of lab 1.6 again: when the kernel knows both ends, it can do the copy without your program in the middle. The file is identical either way. What changes is how often you cross into the kernel.', set: {} },
+      { cap: 'The lesson of module 1 again: when the kernel knows both ends, it can do the copy without your program in the middle. The file is identical either way. What changes is how often you cross into the kernel.', set: {} },
     ],
   };
 }

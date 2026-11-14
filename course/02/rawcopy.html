@@ -1,0 +1,38 @@
+<g-callout type="goal"><p>Write <code>rawcopy</code>: a file copy made of <code>syscall.Open</code>, <code>Read</code>, <code>Write</code> and <code>Close</code>, which never loses a byte and never hides an error.</p></g-callout>
+
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>Open the source first, then the destination: a missing source must not leave an empty destination behind.</li>
+<li>Read in chunks until <code>Read</code> returns 0; write each chunk with <code>writeAll</code>, which loops until every byte is taken.</li>
+<li>Every call's error is returned, wrapped with what was being done (<code>fmt.Errorf("open %s: %w", …)</code>).</li>
+</ul></div>
+
+<h2>The spec</h2>
+<table>
+<tr><th>Command</th><th>Behaviour</th></tr>
+<tr><td><code>rawcopy SRC DST</code></td><td>Copy every byte of <code>SRC</code> into <code>DST</code> (created with mode 0644, or emptied if it exists), print <code>copied N bytes</code>, exit with status 0.</td></tr>
+<tr><td>Errors</td><td>Return the error; <code>main</code> prints <code>rawcopy: …</code> on standard error and exits with status 1. The error text must contain the system's words (for example <code>no such file or directory</code>, <code>no space left on device</code>).</td></tr>
+<tr><td>Rule</td><td>System calls only: no <code>os.Open</code>, <code>os.Create</code>, <code>os.ReadFile</code>, <code>io.Copy</code>.</td></tr>
+</table>
+
+<details class="fold more"><summary>Flags, modes and closing</summary>
+<p><code>syscall.Open(path, flags, mode)</code>: <code>flags</code> combine with <code>|</code>. <code>O_RDONLY</code> reads; <code>O_WRONLY|O_CREAT|O_TRUNC</code> writes, creates the file if needed and empties it if not. <code>mode</code> (here <code>0644</code>, "owner reads and writes, others read") only matters when the file is created.</p>
+<p><code>defer syscall.Close(fd)</code> works like <code>defer f.Close()</code> in module 1. Use <code>%w</code> in <code>fmt.Errorf</code>, so the <code>syscall.Errno</code> stays inside the error and its text is printed.</p>
+</details>
+
+<g-lab id="rawcopy"></g-lab>
+
+<h2 class="run">Run this</h2>
+<g-cmd m="A">
+$ rawcopy /tmp/big.bin /tmp/big.copy
+$ sha256sum /tmp/big.bin /tmp/big.copy
+$ rawcopy /tmp/big.bin /mnt/small/big.copy
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>Same fingerprint: every byte made it.</li>
+<li>Copying 2 MB to a 1 MB disk ends in <code>rawcopy: write /mnt/small/big.copy: no space left on device</code>, exit status 1. A copy that ignored <code>Write</code>'s results would have printed "copied 2097152 bytes".</li>
+</ul>
+</div>

@@ -2,22 +2,171 @@
  "title": "gosock",
  "go": "1.24.7",
  "projects": {
-  "gosock": { "bin": "gosock", "file": "01/gosock.go", "solution": "01/gosock.solution.go" },
-  "copy": { "bin": "copy", "file": "01/copy.go" }
+  "gosock": {
+   "bin": "gosock",
+   "file": "01/gosock.go",
+   "solution": "01/gosock.solution.go"
+  },
+  "copy": {
+   "bin": "copy",
+   "file": "01/copy.go"
+  },
+  "rawcat": {
+   "bin": "rawcat",
+   "file": "02/rawcat.go"
+  },
+  "rawcopy": {
+   "bin": "rawcopy",
+   "file": "02/rawcopy.go",
+   "solution": "02/rawcopy.solution.go"
+  },
+  "offsets": {
+   "bin": "offsets",
+   "file": "02/offsets.go"
+  },
+  "leak": {
+   "bin": "leak",
+   "file": "02/leak.go"
+  }
  },
  "modules": [
   {
-   "id": "m1", "dir": "01", "title": "A file crosses the network",
+   "id": "m1",
+   "dir": "01",
+   "title": "A file crosses the network",
    "blurb": "See a file cross between two machines, write the tool that does it, then look inside.",
    "items": [
-    { "id": "start", "kind": "lesson", "title": "Start here", "minutes": 8, "file": "start" },
-    { "id": "nc", "kind": "lab", "title": "Send a file with nc", "minutes": 12, "file": "nc" },
-    { "id": "go", "kind": "lesson", "title": "Go in ten minutes", "minutes": 12, "file": "go" },
-    { "id": "recv", "kind": "lab", "title": "gosock recv", "minutes": 20, "file": "recv", "lab": "recv" },
-    { "id": "send", "kind": "lab", "title": "gosock send", "minutes": 15, "file": "send", "lab": "send" },
-    { "id": "strace", "kind": "lesson", "title": "Reading strace", "minutes": 8, "file": "strace" },
-    { "id": "fd", "kind": "lesson", "title": "What is a file descriptor, exactly?", "minutes": 10, "file": "fd" },
-    { "id": "box", "kind": "lab", "title": "Open the box", "minutes": 12, "file": "box" }
+    {
+     "id": "start",
+     "kind": "lesson",
+     "title": "Start here",
+     "minutes": 8,
+     "file": "start"
+    },
+    {
+     "id": "nc",
+     "kind": "lab",
+     "title": "Send a file with nc",
+     "minutes": 12,
+     "file": "nc"
+    },
+    {
+     "id": "go",
+     "kind": "lesson",
+     "title": "Go in ten minutes",
+     "minutes": 12,
+     "file": "go"
+    },
+    {
+     "id": "recv",
+     "kind": "lab",
+     "title": "gosock recv",
+     "minutes": 20,
+     "file": "recv",
+     "lab": "recv"
+    },
+    {
+     "id": "send",
+     "kind": "lab",
+     "title": "gosock send",
+     "minutes": 15,
+     "file": "send",
+     "lab": "send"
+    },
+    {
+     "id": "strace",
+     "kind": "lesson",
+     "title": "Reading strace",
+     "minutes": 8,
+     "file": "strace"
+    },
+    {
+     "id": "fd",
+     "kind": "lesson",
+     "title": "What is a file descriptor, exactly?",
+     "minutes": 10,
+     "file": "fd"
+    },
+    {
+     "id": "box",
+     "kind": "lab",
+     "title": "Open the box",
+     "minutes": 12,
+     "file": "box"
+    }
+   ]
+  },
+  {
+   "id": "m2",
+   "dir": "02",
+   "title": "Talking to the kernel directly",
+   "blurb": "System calls with nothing in between: error numbers, short reads and writes, offsets, the page cache.",
+   "items": [
+    {
+     "id": "check2",
+     "kind": "lesson",
+     "quiz": true,
+     "title": "Check: module 1",
+     "minutes": 6,
+     "file": "check"
+    },
+    {
+     "id": "raw",
+     "kind": "lesson",
+     "title": "System calls by hand",
+     "minutes": 10,
+     "file": "raw"
+    },
+    {
+     "id": "errno",
+     "kind": "lesson",
+     "title": "When a call fails: errno",
+     "minutes": 8,
+     "file": "errno"
+    },
+    {
+     "id": "short",
+     "kind": "lesson",
+     "title": "Short reads, short writes",
+     "minutes": 10,
+     "file": "short"
+    },
+    {
+     "id": "rawcopy",
+     "kind": "lab",
+     "title": "rawcopy",
+     "minutes": 25,
+     "file": "rawcopy",
+     "lab": "rawcopy"
+    },
+    {
+     "id": "offsets",
+     "kind": "lesson",
+     "title": "Where the next read starts",
+     "minutes": 10,
+     "file": "offsets"
+    },
+    {
+     "id": "cache",
+     "kind": "lesson",
+     "title": "The page cache: reading",
+     "minutes": 10,
+     "file": "cache"
+    },
+    {
+     "id": "dirty",
+     "kind": "lesson",
+     "title": "The page cache: writing",
+     "minutes": 10,
+     "file": "dirty"
+    },
+    {
+     "id": "leak",
+     "kind": "lesson",
+     "title": "A bug on purpose: too many open files",
+     "minutes": 8,
+     "file": "leak"
+    }
    ]
   }
  ]

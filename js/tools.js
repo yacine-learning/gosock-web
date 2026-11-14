@@ -45,6 +45,11 @@ P.head = async (c) => {
   if (f.c) { let left = parseSize(f.c); while (left > 0) { const b = await c.sys('read', fd, Math.min(left, 65536)); if (!b.length) break; left -= b.length; await c.sys('write', 1, b); } return 0; }
   const lines = text(await readAll(c, fd)).split('\n'); await c.out(lines.slice(0, +(f.n || 10)).join('\n') + '\n');
 };
+P.tail = async (c) => {
+  const [f, pos] = opts(c.argv, 'n'); const fd = pos[0] ? await open(c, pos[0]) : 0; if (fd < 0) return 1;
+  const lines = text(await readAll(c, fd)).split('\n'); if (lines[lines.length - 1] === '') lines.pop();
+  const n = +(f.n || 10); await c.out(lines.slice(Math.max(0, lines.length - n)).join('\n') + (lines.length ? '\n' : ''));
+};
 P.wc = async (c) => {
   const [f, pos] = opts(c.argv); let rc = 0;
   for (const name of pos.length ? pos : [null]) {

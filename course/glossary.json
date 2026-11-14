@@ -73,5 +73,50 @@
   "k": "offset",
   "term": "file offset",
   "short": "The position in an open file where the next <code>read</code> or <code>write</code> starts. It is stored in the open file description, not in the file and not in the descriptor."
+ },
+ {
+  "k": "pagecache",
+  "term": "page cache",
+  "short": "The kernel's copy of file contents in memory, in 4 KB pages. Reads are served from it; writes go into it first (dirty pages) and reach the disk later."
+ },
+ {
+  "k": "epoll",
+  "term": "epoll",
+  "short": "A Linux interface to wait for many descriptors at once: register them with <code>epoll_ctl</code>, then <code>epoll_wait</code> returns the ones that are ready."
+ },
+ {
+  "k": "backlog",
+  "term": "backlog",
+  "short": "The second argument of <code>listen</code>: how many finished connections the kernel keeps in the accept queue, waiting for the program to call <code>accept</code>."
+ },
+ {
+  "k": "timewait",
+  "term": "TIME_WAIT",
+  "short": "The state the side that closes a TCP connection first stays in for 60 seconds, so that late segments of the old connection cannot be mistaken for a new one."
+ },
+ {
+  "k": "window",
+  "term": "receive window",
+  "short": "How many more bytes a TCP receiver can take right now: the free room in its receive buffer, sent in every segment. A sender never sends beyond it."
+ },
+ {
+  "k": "nagle",
+  "term": "Nagle's algorithm",
+  "short": "A TCP rule (RFC 896): a segment smaller than the maximum size waits while earlier data is unacknowledged, so many small writes travel as a few segments. TCP_NODELAY turns it off."
+ },
+ {
+  "k": "rto",
+  "term": "retransmission timeout",
+  "short": "How long TCP waits for an acknowledgement before sending a segment again; computed from the measured round-trip time, at least 200 ms on Linux, doubled after each timeout."
+ },
+ {
+  "k": "nonblock",
+  "term": "non-blocking",
+  "short": "A descriptor with <code>O_NONBLOCK</code>: a call that would have to wait fails at once with <code>EAGAIN</code> instead."
+ },
+ {
+  "k": "sock",
+  "term": "struct sock",
+  "short": "The kernel's object for a socket: state, addresses, send and receive buffers, sequence numbers, timers. <code>ss -tnoemi</code> prints much of it."
  }
 ]

@@ -1,0 +1,33 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li><code>read(fd, buf)</code> returns <b>at most</b> <code>len(buf)</code> bytes, often fewer: what a terminal line, a pipe or a socket has <b>right now</b>. Only 0 means the end.</li>
+<li><code>write(fd, b)</code> can also take fewer bytes than you give it, and say so in its result. A full disk does it: a short write, then <code>ENOSPC</code>.</li>
+<li>So reading is a loop, and writing is a loop too (<code>writeAll</code>).</li>
+</ul></div>
+
+<g-anim scene="partial-write"></g-anim>
+
+<details class="fold more"><summary>When a write is short</summary>
+<p>A blocking <code>write</code> to a socket or a pipe usually waits until everything is taken. It returns early when there is no more room and waiting cannot help (a full disk), when a signal interrupts it after some bytes were copied, or in non-blocking mode, which a later module shows. Each time, the result is the truth: "I took N bytes". The rest is still in your buffer, and it is your job.</p>
+<p>Reads are short all the time. A terminal hands over one line per <code>read</code>; a socket hands over what has arrived. Code that assumes "one <code>read</code> = one message" works on a test machine and fails on a real network.</p>
+<p><code>/mnt/small</code> on these machines is a 1 MB disk, there to make writes run out of room.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<p>A short read. Run the first line, then <b>type two lines</b> in terminal A and press <b>Ctrl+D</b>:</p>
+<g-cmd m="A">
+$ strace -e trace=read rawcat
+</g-cmd>
+<p>A short write, then a full disk:</p>
+<g-cmd m="A">
+$ df -h
+$ strace -e trace=write cp /tmp/big.bin /mnt/small/big.bin
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>Each line you typed came back from its own <code>read(0, "…\n", 4096)</code>: 4096 asked, a few bytes given.</li>
+<li>One <code>write</code> returned less than it was given, and the next one <code>-1 ENOSPC</code>. <code>cp</code> noticed both.</li>
+</ul>
+</div>

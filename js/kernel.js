@@ -153,7 +153,7 @@ export class Machine {
     for (const n of ['null', 'zero', 'urandom']) { const i = new Inode('chr', 0o666); i.dev = n; this.root.children.get('dev').children.set(n, i); }
     this.writeFile('/etc/hostname', this.host + '\n');
     // a small filesystem, to see what a full disk does to write
-    this.mkdirp('/mnt/small').fs = { name: '/dev/vdb', cap: 1 << 20, used: 0, mnt: '/mnt/small' };
+    this.mkdirp('/mnt/small').fs = { name: '/dev/vdb', cap: 1 << 20, used: 20 << 10, mnt: '/mnt/small' };   // 20 KB: the filesystem's own records
     this.rootfs = { name: '/dev/vda1', cap: 8 * 2 ** 30, used: 0, mnt: '/' };
     // /proc: files whose content the kernel writes when they are opened
     const proc = (path, gen, onWrite) => { const [dir, name] = this.parent(this.mkdirp(path.slice(0, path.lastIndexOf('/'))) && path); const i = new Inode('file', onWrite ? 0o644 : 0o444); i.gen = gen; i.onWrite = onWrite; i.nocache = true; dir.children.set(name, i); };
@@ -161,6 +161,7 @@ export class Machine {
     proc('/proc/sys/vm/drop_caches', () => '0\n', (m, t) => { if (/^[123]/.test(t.trim())) m.dropCaches(); });
     proc('/proc/sys/net/core/somaxconn', () => '4096\n');
     this.cache = new Set();                // inodes with pages in the page cache
+    this.dirtyExpire = DIRTY_EXPIRE_MS;    // tests shorten it
     this.writeback = null;                 // the flusher wakes every 5 s while there are dirty pages
   }
   // ── the page cache ──
@@ -183,7 +184,7 @@ export class Machine {
   // write dirty pages to the disk: all of them (sync), those of one file (fsync), or the old ones (the flusher thread)
   flushDirty(all, only) {
     let n = 0;
-    for (const ino of this.cache) { const pc = ino.pc; if (!pc || !pc.dirty.size || (only && ino !== only)) continue; if (!all && !only && Date.now() - pc.since < DIRTY_EXPIRE_MS) continue; n += pc.dirty.size; this.stats.pgOut += pc.dirty.size; pc.dirty.clear(); }
+    for (const ino of this.cache) { const pc = ino.pc; if (!pc || !pc.dirty.size || (only && ino !== only)) continue; if (!all && !only && Date.now() - pc.since < this.dirtyExpire) continue; n += pc.dirty.size; this.stats.pgOut += pc.dirty.size; pc.dirty.clear(); }
     if (n) this.world.emit('change');
     return n;
   }

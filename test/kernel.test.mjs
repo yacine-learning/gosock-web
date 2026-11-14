@@ -103,7 +103,7 @@ test('EMFILE at 1024 descriptors; ENOSPC after a short write on the small disk',
     try { await c.sys('write', fd, new Uint8Array(10)); } catch (e) { out.push(e.code); }
     return out;
   });
-  assert.deepEqual(r, [700 << 10, (1 << 20) - (700 << 10), 'ENOSPC']);
+  assert.deepEqual(r, [700 << 10, (1 << 20) - (20 << 10) - (700 << 10), 'ENOSPC']);
 });
 test('page cache: cold read is slow, warm is fast; fincore, free, dirty pages, sync, drop_caches needs root', async () => {
   const { A } = boot();
@@ -120,7 +120,7 @@ test('page cache: cold read is slow, warm is fast; fincore, free, dirty pages, s
   assert.match(A.t.out, /bash: \/proc\/sys\/vm\/drop_caches: Permission denied\n3\n/); assert.match(A.t.out, /0B\s+0\s+2M \/tmp\/big.bin/);
   assert.match(A.t.out, /total\s+used\s+free\s+shared\s+buff\/cache\s+available\nMem:/);
   A.t.out = ''; await A.run('df -h');
-  assert.match(A.t.out, /\/dev\/vdb\s+1M\s+0B\s+1M\s+0% \/mnt\/small/); assert.match(A.t.out, /\/dev\/vda1\s+8G\s+1\.5G\s+6\.5G\s+19% \//);
+  assert.match(A.t.out, /\/dev\/vdb\s+1M\s+20K\s+1004K\s+2% \/mnt\/small/); assert.match(A.t.out, /\/dev\/vda1\s+8G\s+1\.5G\s+6\.5G\s+19% \//);
 });
 test('non-blocking read gives EAGAIN; fcntl in strace; epoll reports a pending connection and data', async () => {
   const { a, b } = boot(); const lines = [];
@@ -174,6 +174,13 @@ test('tc netem loss: the transfer is still exact, ss -ti counts retransmissions,
   assert.match(B.t.out, /3 packets captured/);
 });
 
+test('dirty pages are written back by themselves once old enough', async () => {
+  const { A, a } = boot(); a.dirtyExpire = 300;
+  await A.run('cp /tmp/hello.txt /tmp/h2; grep Dirty /proc/meminfo');
+  assert.match(A.t.out, /Dirty:\s+4 kB/);
+  await sleep(5600); A.t.out = ''; await A.run('grep Dirty /proc/meminfo');
+  assert.match(A.t.out, /Dirty:\s+0 kB/);
+});
 let failed = 0;
 for (const [name, fn] of tests) {
   try { await fn(); console.log('ok   ', name); } catch (e) { failed++; console.log('FAIL ', name, '\n', e); }

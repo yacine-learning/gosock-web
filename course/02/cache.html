@@ -1,0 +1,47 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>The kernel keeps file contents in memory, in 4 KB <b>pages</b>: the <g-t k="pagecache">page cache</g-t>. Every <code>read</code> copies from it.</li>
+<li>A page that is not there yet comes from the disk first (a <b>miss</b>, slow); the next read of it is a <b>hit</b>, a memory copy.</li>
+<li>"buff/cache" in <code>free</code> is that memory: used, but given back as soon as programs need it.</li>
+</ul></div>
+
+<g-anim scene="page-cache"></g-anim>
+
+<details class="fold more"><summary>Tools, and the disk of these machines</summary>
+<p><code>fincore FILE</code> tells how many of a file's pages are in the cache (it asks the kernel with <code>mincore</code>). <code>free</code> and <code>/proc/meminfo</code> give the totals. <code>echo 3 | sudo tee /proc/sys/vm/drop_caches</code> throws away every clean cached page, so the next read is a miss again: only root may do it, and real machines rarely need it.</p>
+<p>The simulated disk reads about 20 MB per second, a slow disk, so the difference is easy to see. A real SSD is 50 to 100 times faster, and memory is faster still: the gap remains.</p>
+</details>
+<details class="fold kc"><summary>A read, in simplified kernel C</summary>
+<g-go file="kernel (simplified).c">
+ssize_t filemap_read(struct file *f, char __user *buf, size_t n) {
+    struct address_space *m = f->f_inode->i_mapping;   // the file's cached pages
+    pgoff_t index = f->f_pos / PAGE_SIZE;
+    struct page *page = find_get_page(m, index);         // a hit?
+    if (!page)
+        page = read_page_from_disk(m, index);            // a miss: the process sleeps here
+    copy_to_user(buf, page_address(page) + f->f_pos % PAGE_SIZE, n);
+    f->f_pos += n;
+    return n;
+}
+</g-go>
+</details>
+
+<h2 class="run">Run this</h2>
+<g-cmd m="A">
+$ fincore /tmp/big.bin
+$ time cat /tmp/big.bin > /dev/null
+$ time cat /tmp/big.bin > /dev/null
+$ fincore /tmp/big.bin
+$ free
+$ echo 3 | sudo tee /proc/sys/vm/drop_caches
+$ time cat /tmp/big.bin > /dev/null
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>The first <code>cat</code> took several times longer than the second, for the same bytes.</li>
+<li>After it, <code>fincore</code> shows all 512 pages in memory, and A's kernel view shows a 2 MB page cache.</li>
+<li>After <code>drop_caches</code>, the first read is slow again.</li>
+</ul>
+</div>

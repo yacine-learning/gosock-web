@@ -14,8 +14,8 @@ const equal = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 const pattern = (n) => { const d = new Uint8Array(n); for (let i = 0; i < n; i++) d[i] = (i * 7 + (i >> 8)) & 255; return d; };
 
 // two fresh machines with the student's program installed on both
-function bench(module) {
-  const world = new World(); const { a, b } = setupMachines(world); world.programs.set('gosock', goProgram(module));
+function bench(module, bin = 'gosock') {
+  const world = new World(); const { a, b } = setupMachines(world); world.programs.set(bin, goProgram(module));
   const cap = (m) => { const t = { buf: '', write(x) { this.buf += text(x); } }; t.ofd = m.mktty(t); return t; };
   const h = {
     world, a, b,
@@ -104,6 +104,59 @@ const RECV = [
   }],
 ];
 
+// lab: rawcopy (module 2)
+const RAWCOPY = [
+  ['A', 'copies every byte and says how many', async (h) => {
+    const data = pattern((1 << 20) + 13); h.a.writeFile('/tmp/in.bin', data);
+    const r = await h.run(h.a, 6000, 'rawcopy', '/tmp/in.bin', '/tmp/out.bin');
+    if (r.timedOut) fail('the program did not finish: does the loop stop when Read returns 0?');
+    const got = h.a.readFile('/tmp/out.bin');
+    if (!got) fail(`/tmp/out.bin was not created. The program printed ${show(r.all)}`);
+    if (!equal(got, data)) fail(`the copy has ${got.length} bytes, the source ${data.length}${got.length === data.length ? ', and they differ' : ''}`);
+    if (!r.stdout.includes(`copied ${data.length} bytes`)) fail(`expected "copied ${data.length} bytes" on standard output, got ${show(r.stdout)}`);
+    if (r.code !== 0) fail(`exit status ${r.code}, expected 0`);
+  }],
+  ['B', 'empties a destination that already exists', async (h) => {
+    h.a.writeFile('/tmp/in.bin', pattern(100)); h.a.writeFile('/tmp/out.bin', pattern(5000));
+    const r = await h.run(h.a, 4000, 'rawcopy', '/tmp/in.bin', '/tmp/out.bin');
+    const got = h.a.readFile('/tmp/out.bin');
+    if (!got || got.length !== 100) fail(`the destination should hold the 100 bytes of the source, it holds ${got ? got.length : 0} (did you open it with O_TRUNC?). The program printed ${show(r.all)}`);
+  }],
+  ['C', 'uses system calls only', async (h, src) => {
+    const bad = [['os.Open', /\bos\.(Open|OpenFile|Create|ReadFile|WriteFile)\b/], ['io.Copy', /\bio\.(Copy|ReadAll)\b/]].find(([, re]) => re.test(src));
+    if (bad) fail(`the code calls ${bad[0]}: here every file operation must be a syscall.X call`);
+    h.a.writeFile('/tmp/in.bin', pattern(200000)); const calls = [];
+    h.world.on((t, r) => { if (t === 'sys' && r.comm === 'rawcopy') calls.push(r); });
+    await h.run(h.a, 4000, 'rawcopy', '/tmp/in.bin', '/tmp/out.bin');
+    const reads = calls.filter((r) => r.name === 'read' && r.args[0] > 2);
+    if (reads.length < 3) fail(`the 200000-byte file was read in ${reads.length} read call(s): read it in chunks (a 64 KB buffer gives 4 reads)`);
+  }],
+  ['D', 'a missing source: an error, and no destination created', async (h) => {
+    const r = await h.run(h.a, 4000, 'rawcopy', '/tmp/missing.bin', '/tmp/out.bin');
+    if (r.timedOut) fail('the program did not exit');
+    if (r.code !== 1 || !r.stderr.includes('no such file or directory')) fail(`expected exit status 1 and "no such file or directory" on standard error, got ${status(r)} and ${show(r.stderr)}`);
+    if (h.a.readFile('/tmp/out.bin')) fail('/tmp/out.bin was created although the source does not exist: open the source first');
+  }],
+  ['E', 'a full disk: an error, not a success', async (h) => {
+    const data = pattern(2 << 20); h.a.writeFile('/tmp/in.bin', data);
+    const r = await h.run(h.a, 6000, 'rawcopy', '/tmp/in.bin', '/mnt/small/out.bin');
+    if (r.timedOut) fail('the program did not exit when the disk filled up: is Write\'s error returned?');
+    if (r.stdout.includes('copied')) fail(`it printed ${show(r.stdout)} although the 1 MB disk cannot hold 2 MB: check the error Write returns`);
+    if (r.code !== 1 || !r.stderr.includes('no space left on device')) fail(`expected exit status 1 and "no space left on device" on standard error, got ${status(r)} and ${show(r.stderr)}`);
+  }],
+  ['F', 'after a short write, writes the rest', async (h) => {
+    // on the nearly full disk one write takes fewer bytes than given: the next write must carry what is left
+    h.a.writeFile('/tmp/in.bin', pattern(2 << 20));
+    const calls = []; h.world.on((t, r) => { if (t === 'sys' && r.comm === 'rawcopy' && r.name === 'write' && r.args[0] > 2) calls.push(r); });
+    await h.run(h.a, 6000, 'rawcopy', '/tmp/in.bin', '/mnt/small/out.bin');
+    const i = calls.findIndex((r) => !r.err && r.ret < r.args[1].len);
+    if (i < 0) fail('no short write happened: was the copy made with syscall.Write in 64 KB chunks? (check E must pass first)');
+    const short = calls[i], next = calls[i + 1], left = short.args[1].len - short.ret;
+    if (!next) fail(`Write took ${short.ret} of ${short.args[1].len} bytes, and the program never wrote the other ${left}: loop in writeAll until every byte is taken`);
+    if (next.args[1].len !== left) fail(`Write took ${short.ret} of ${short.args[1].len} bytes; the next write should carry the ${left} bytes left, it carried ${next.args[1].len} (new data, so ${left} bytes were dropped)`);
+  }],
+];
+
 // lab: send
 const SEND = [
   ['A', 'sends every byte of the file', async (h) => {
@@ -172,6 +225,16 @@ export const LABS = {
     explain: '<p>Four calls, each followed by the same <code>if err != nil { return err }</code>. Every resource that needs closing (listener, connection, file) is closed by a <code>defer</code> on the line after it was opened, so every way out of <code>recv</code> cleans up. <code>io.Copy(f, conn)</code> is the whole transfer: it reads from the connection and writes to the file until the sender closes.</p>',
     solution: ['func recv(', '\n}\n'],
   },
+  rawcopy: {
+    title: 'rawcopy', project: 'rawcopy', bin: 'rawcopy', tests: RAWCOPY,
+    hints: [
+      'Two <code>syscall.Open</code> calls, each followed by <code>if err != nil { return 0, fmt.Errorf("open %s: %w", src, err) }</code> and <code>defer syscall.Close(fd)</code>. Then <code>buf := make([]byte, 64*1024)</code> and a <code>for { … }</code> loop.',
+      'In the loop: <code>n, err := syscall.Read(in, buf)</code>; on error return it; if <code>n == 0</code> return the total; otherwise <code>writeAll(out, buf[:n])</code> and add <code>n</code> to the total. In <code>writeAll</code>: <code>for len(b) &gt; 0 { n, err := syscall.Write(fd, b); if err != nil { return err }; b = b[n:] }</code>.',
+      'Wrap the write error too, for example <code>fmt.Errorf("write %s: %w", dst, err)</code>, and delete both <code>not implemented yet</code> lines. Check F fails when <code>writeAll</code> writes once and ignores <code>n</code>.',
+    ],
+    explain: '<p>The copy is two loops. The outer one reads until <code>Read</code> says 0 (the end). The inner one, <code>writeAll</code>, keeps writing until the kernel has taken every byte: <code>Write</code> returns how many it took, and on a nearly full disk that is fewer than given. Every error carries what was being done and the kernel\'s words, so <code>rawcopy: write /mnt/small/out.bin: no space left on device</code> tells the whole story.</p>',
+    solution: ['func rawcopy(', '\n}\n'], solution2: ['func writeAll(', '\n}\n'],
+  },
   send: {
     title: 'gosock send', project: 'gosock', tests: SEND,
     hints: [
@@ -185,12 +248,12 @@ export const LABS = {
 };
 
 // run every check of a lab; onUpdate(id, state, message) is called as they progress
-export async function runLab(labId, module, onUpdate) {
+export async function runLab(labId, module, onUpdate, src = '') {
   const lab = LABS[labId]; let passed = 0;
   for (const [id, , fn] of lab.tests) {
     onUpdate(id, 'run');
-    const h = bench(module);
-    try { await fn(h); passed++; onUpdate(id, 'pass'); }
+    const h = bench(module, lab.bin);
+    try { await fn(h, src); passed++; onUpdate(id, 'pass'); }
     catch (e) { if (e instanceof Fail) onUpdate(id, 'fail', e.message); else { console.error(e); onUpdate(id, 'fail', e === KILLED ? 'the check was interrupted' : 'the check itself failed: ' + (e instanceof Errno ? e.text : e.message)); } }
     h.stop(); await sleep(10);
   }
