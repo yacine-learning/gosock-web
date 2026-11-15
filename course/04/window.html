@@ -1,0 +1,33 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>Every segment carries the sender's <g-t k="window">receive window</g-t>: the free room in its receive buffer. The other side never sends more than that.</li>
+<li>A program that does not read lets its receive buffer fill; the window falls to <b>0</b> and the sender stops. Its send buffer fills too, and then its <code>write</code> (or <code>sendfile</code>) sleeps.</li>
+<li>This is <b>flow control</b>: the slowest reader sets the pace, end to end, with no message saying "slow down".</li>
+</ul></div>
+
+<details class="fold more"><summary>Restarting after a zero window</summary>
+<p>When the reader drains its buffer, its kernel sends an ACK with the new, larger window (a "window update") and the sender resumes. If that update were lost, both sides would wait for ever, so a sender facing a zero window sends a small probe now and then; the answer carries the current window.</p>
+<p>The default buffers here are 128 KB to receive and 85 KB to send. Real Linux grows them automatically for fast, distant peers (up to several MB), unless the program set them with <code>setsockopt</code>.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<g-example project="slowrecv"><p><code>slowrecv</code> accepts one connection, then waits 8 seconds before reading anything. Build it, start it on B, send the big file from A, and look at both sockets while B is not reading:</p></g-example>
+<g-cmd m="B">
+$ slowrecv &
+</g-cmd>
+<g-cmd m="A">
+$ gosock send $B_IP:9000 /tmp/big.bin &
+$ ss -tni
+</g-cmd>
+<g-cmd m="B">
+$ ss -tn
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>On B, Recv-Q is 131072: the receive buffer is full. On A, Send-Q is 87040 and <code>snd_wnd:0</code>.</li>
+<li>The kernel view shows A's <code>gosock</code> asleep in <code>sendfile</code>, and both bars full.</li>
+<li>After 8 seconds B reads, the window opens, and the rest of the 2 MB flows.</li>
+</ul>
+</div>

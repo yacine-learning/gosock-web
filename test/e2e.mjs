@@ -308,6 +308,83 @@ test('pages "close", "reuse": tcpdump of a whole connection, TIME_WAIT on the si
   assert.match(rb, /TIME-WAIT\s+0\s+0\s+10\.0\.0\.2:9000\s+10\.0\.0\.1:\d+/); assert.match(rb, /once: bind: address already in use/);
   assert.equal((ra.match(/hello from once/g) || []).length, 2);
 });
+// ── module 4 ──
+const multiSol = fs.readFileSync('course/04/multi.solution.go', 'utf8');
+const runCmds = async (list) => { for (const [n, m, wait] of list) { await page.locator('.cmd-run').nth(n).click(); if (wait) await page.waitForTimeout(wait); else await idle(m, 30000); } };
+test('module 4: the check passes; page "window": a full receive buffer, a zero window, a sleeping sender', async () => {
+  await quizPass('check4', ['b', 'd', 'a', 'c', 'b', 'a', 'd', 'c']);
+  await open('#/p/window'); await buildProject('gosock', solution); await open('#/p/window'); await buildProject('slowrecv');
+  await page.locator('.tab[data-tab="machines"]').click();
+  await runCmds([[0, 'B', 400], [1, 'A', 1500], [2, 'A'], [3, 'B']]);
+  const a = await out('A'), b = await out('B'); console.log(a.split('\n').slice(-3).join('\n')); console.log(b.split('\n').slice(-3).join('\n'));
+  assert.match(a, /ESTAB\s+0\s+87040\s+10\.0\.0\.1:\d+\s+10\.0\.0\.2:9000/); assert.match(a, /snd_wnd:0 /);
+  assert.match(b, /ESTAB\s+131072\s+0\s+10\.0\.0\.2:9000/);
+  const kv = await page.locator('#kview').innerText(); assert.match(kv, /sendfile\(4, 3/); assert.match(kv, /128 KB \/ 128 KB/);
+  await shot('window-kview');
+  await page.waitForFunction(() => /read 2097152 bytes/.test(window.gosock.terms.B.out.textContent), null, { timeout: 30000 });
+});
+test('page "nagle": 100 one-byte writes are 100 segments with TCP_NODELAY, a handful with Nagle', async () => {
+  await open('#/p/nagle'); await buildProject('chatty');
+  await page.locator('.tab[data-tab="machines"]').click();
+  await runCmds([[0, 'A'], [1, 'B'], [2, 'B', 400], [3, 'A'], [4, 'B'], [5, 'B'], [6, 'B'], [7, 'B', 400], [8, 'A'], [9, 'B'], [10, 'B'], [11, 'A']]);
+  await idle('B');
+  const counts = [...(await out('B')).matchAll(/grep -c 'length \[1-9\]' d\d\.txt\n(\d+)/g)].map((m) => +m[1]); console.log('      segments with data:', counts);
+  assert.equal(counts[0], 100); assert.ok(counts[1] >= 2 && counts[1] <= 12, 'with Nagle: ' + counts[1]);
+  assert.match(await sh('A', 'tc qdisc show dev eth0'), /fq_codel/);
+});
+test('page "loss": 5% loss, retransmissions, the same fingerprint', async () => {
+  await open('#/p/loss'); await buildProject('gosock', solution);
+  await page.locator('.tab[data-tab="machines"]').click(); await sh('A', 'clear');
+  await runCmds([[0, 'A'], [1, 'B', 400], [2, 'A', 1500], [3, 'A']]);
+  const kv = await page.locator('#kview').innerText(); console.log('      ' + (/\d+ lost/.exec(kv) || ['no loss shown'])[0]);
+  await shot('loss-kview');
+  await idle('B', 90000); await runCmds([[4, 'B'], [5, 'A']]);
+  const a = await out('A'); console.log(a.split('\n').filter((l) => /retrans|cwnd/.test(l)).slice(0, 2).join('\n'));
+  assert.match(a, /rto:\d+ .*mss:1460/); assert.match(await out('B'), new RegExp(SHA + '  big.copy'));
+  assert.match(await sh('A', 'tc qdisc show dev eth0'), /fq_codel/);
+});
+test('pages "nonblock", "epoll": EAGAIN in the trace; one epoll loop serves a silent client and a busy one', async () => {
+  await open('#/p/nonblock'); await buildProject('peek');
+  await page.locator('.tab[data-tab="machines"]').click(); await sh('B', 'clear');
+  await runCmds([[0, 'B', 300], [1, 'A']]); await idle('B', 15000);
+  const b = await out('B'); console.log(b.split('\n').slice(0, 14).join('\n'));
+  assert.match(b, /fcntl\(3, F_GETFL\) = 0x2 \(flags O_RDWR\)\nfcntl\(3, F_SETFL, O_RDWR\|O_NONBLOCK\) = 0/);
+  assert.match(b, /accept\(3, 0x7ffd3c0e8650, \[16\]\) = -1 EAGAIN \(Resource temporarily unavailable\)\naccept: nobody yet, doing something else/);
+  assert.match(b, /read: "hello\\n"[\s\S]*read: the end/);
+  await open('#/p/epoll'); await buildProject('epollsrv');
+  await page.locator('.tab[data-tab="machines"]').click(); await sh('B', 'clear');
+  await runCmds([[0, 'B', 400], [1, 'A', 200], [2, 'A']]);
+  await page.waitForTimeout(4500);
+  await runCmds([[3, 'B'], [4, 'B'], [5, 'B']]);
+  const e = await out('B'); console.log(e);
+  assert.match(e, /\[5\] connected\n\[6\] connected\n\[6\] "hello\\n"\n\[6\] closed\n[\s\S]*\[5\] closed/);
+  const waits = +/grep -c epoll_wait ep.trace\n(\d+)/.exec(e)[1]; assert.ok(waits >= 3 && waits < 20, 'epoll_wait calls: ' + waits);
+  assert.match(e, /epoll_ctl\(4, EPOLL_CTL_ADD, 3, \{events=EPOLLIN, data=\{u32=3, u64=3\}\}\) = 0/);
+});
+test('lab multi: the starting code fails, the solution passes, the page commands work', async () => {
+  await open('#/p/multi');
+  let r = await checks('multi'); assert.equal(r.passed, false);
+  for (const k of 'ABCDE') assert.equal(r.res[k].state, 'fail', 'starter, check ' + k);
+  await setCode(multiSol); r = await checks('multi');
+  assert.deepEqual(Object.entries(r.res).filter(([, v]) => v.state !== 'pass'), []); assert.ok(r.passed);
+  await buildProject('gosock', solution); await open('#/p/multi'); await buildProject('multi', multiSol);
+  await page.locator('.tab[data-tab="machines"]').click(); await sh('B', 'clear');
+  await runCmds([[0, 'B', 400], [1, 'A', 200], [2, 'A']]); await idle('B', 15000); await runCmds([[3, 'B']]);
+  const b = await out('B'); console.log(b);
+  assert.match(b, /2: received 2097152 bytes from 10\.0\.0\.1:\d+\n1: received 0 bytes from 10\.0\.0\.1:\d+/);
+});
+const mutMU = (from, to) => { assert.ok(multiSol.includes(from), 'mutation anchor: ' + from); return multiSol.replace(from, to); };
+const MUT4 = [
+  ['multi serves one connection at a time', mutMU('\t\tgo func() {\n\t\t\tdefer wg.Done()', '\t\tfunc() {\n\t\t\tdefer wg.Done()'), /B/],
+  ['multi does not wait for its goroutines', mutMU('\twg.Wait()\n', ''), /C/],
+  ['multi names files by a shared counter', mutMU('fmt.Sprintf("in-%d.bin", k)', 'fmt.Sprintf("in-%d.bin", n)'), /D/],
+];
+for (const [name, src, expect] of MUT4) test(`mutation caught: ${name}`, async () => {
+  await open('#/p/multi'); await setCode(src);
+  const r = await checks('multi'); assert.equal(r.passed, false);
+  const failed = Object.entries(r.res).filter(([, v]) => v.state === 'fail').map(([k, v]) => k + ': ' + v.msg);
+  assert.match(failed.map((f) => f[0]).join(''), expect, failed.join('\n')); console.log('      ' + failed.find((f) => expect.test(f[0])).slice(0, 190));
+});
 // ── IDE features, driven with the keyboard as a student would ──
 const ideDoc = async (src) => {                                  // '@@' marks where the cursor goes
   await open('#/p/go'); await page.locator('.tab[data-tab="code"]').click();

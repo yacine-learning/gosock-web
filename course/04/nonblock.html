@@ -1,0 +1,29 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>A descriptor in <g-t k="nonblock">non-blocking</g-t> mode (<code>O_NONBLOCK</code>, set with <code>fcntl</code>; Go: <code>syscall.SetNonblock</code>) never puts the program to sleep.</li>
+<li>A call that would have to wait fails at once with <code>EAGAIN</code>, "try again". A <code>write</code> that can take only part of the bytes returns a short count.</li>
+<li>The program can do something else and ask later. But asking blindly, again and again, either wastes CPU or answers late.</li>
+</ul></div>
+
+<details class="fold more"><summary>Who uses it</summary>
+<p>Servers that handle thousands of connections cannot afford one sleeping thread per connection. They put every socket in non-blocking mode and ask the kernel, in one call, which ones are ready. The Go runtime does exactly this under your goroutines: on a real Linux machine, every socket of a Go program is non-blocking, and a goroutine that "blocks" in <code>Read</code> is parked by the runtime, not by the kernel. These machines run Go's network code in blocking mode instead, which is simpler to trace.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<g-example project="peek"><p><code>peek</code> listens in non-blocking mode and asks every second. Build it and trace its <code>accept</code> and <code>read</code> calls on B:</p></g-example>
+<g-cmd m="B">
+$ strace -e trace=fcntl,accept,read peek
+</g-cmd>
+<p>A connects after 3 seconds and sends one line:</p>
+<g-cmd m="A">
+$ sleep 3; echo hello | nc -N $B_IP 9000
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li><code>fcntl(3, F_SETFL, O_RDWR|O_NONBLOCK)</code>: that is <code>SetNonblock</code>.</li>
+<li>Each <code>accept(3, …) = -1 EAGAIN</code> returned at once, and <code>peek</code> printed "nobody yet".</li>
+<li>Then the connection, the line, and <code>read</code> returning 0.</li>
+</ul>
+</div>

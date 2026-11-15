@@ -280,7 +280,7 @@ export class Machine {
   openOfd(cwd, path, flags = 0, mode = 0o644, root = false) {
     const abs = this.norm(path, cwd); let ino = this.lookup(abs);
     if (ino && ino.onWrite && (flags & 3) !== O.RDONLY && !root) err('EACCES');      // /proc/sys: root only
-    if (!ino) { if (!(flags & O.CREAT)) err('ENOENT'); const [dir, name] = this.parent(abs); ino = new Inode('file', mode & 0o777); ino.fs = dir.fs; dir.children.set(name, ino); }
+    if (!ino) { if (!(flags & O.CREAT)) err('ENOENT'); const [dir, name] = this.parent(abs); ino = new Inode('file', mode & 0o777 & ~0o022 /* umask 022 */); ino.fs = dir.fs; dir.children.set(name, ino); }
     else if ((flags & O.CREAT) && (flags & O.EXCL)) err('EEXIST');
     const acc = flags & 3;
     if (ino.type === 'dir' && acc !== O.RDONLY) err('EISDIR');
@@ -778,7 +778,7 @@ export function fmtCall(r) {
     case 'lseek': return `lseek(${a[0]}, ${a[1]}, ${['SEEK_SET', 'SEEK_CUR', 'SEEK_END'][a[2]]})`;
     case 'socket': return `socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)`;
     case 'bind': case 'connect': return `${r.name}(${a[0]}, ${faddr({ ip: a[1], port: a[2] })}, 16)`;
-    case 'accept': return `accept(${a[0]}, ${R ? faddr(R) + ', [16]' : ''})`;
+    case 'accept': return `accept(${a[0]}, ${R ? faddr(R) : '0x7ffd3c0e8650'}, [16])`;
     case 'getsockname': case 'getpeername': return `${r.name}(${a[0]}, ${R ? faddr(R) : '0x7ffd3c0e8650'}, [16])`;
     case 'setsockopt': return `setsockopt(${a[0]}, ${a[1] === 1 ? 'SOL_SOCKET' : 'SOL_TCP'}, ${optName(a[1], a[2]) || a[2]}, [${a[3]}], 4)`;
     case 'getsockopt': return `getsockopt(${a[0]}, ${a[1] === 1 ? 'SOL_SOCKET' : 'SOL_TCP'}, ${optName(a[1], a[2]) || a[2]}, [${R ?? ''}], [4])`;

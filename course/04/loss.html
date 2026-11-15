@@ -1,0 +1,39 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>Segments get lost. The sender keeps every byte in its send buffer until it is acknowledged, and sends it again when the ACK does not come.</li>
+<li>It waits a <g-t k="rto">retransmission timeout</g-t> (at least 200 ms, doubled at each failure), or less: three duplicate ACKs ("I am still missing byte X") trigger a fast retransmit.</li>
+<li>The receiver gets every byte, in order, once. Loss costs time, never data.</li>
+</ul></div>
+
+<details class="fold more"><summary>What the sender does after a loss</summary>
+<p>A loss is taken as a sign of congestion: the sender cuts how much it keeps in flight to one segment, then doubles it every round trip ("slow start"). Real Linux uses more refined rules (CUBIC, SACK to resend only the missing segments); these machines send everything again from the first missing byte, which is simpler and slower. A few percent of loss already makes a transfer several times longer.</p>
+<p><code>tc qdisc … netem</code> is the real Linux tool for this: it adds loss, delay or reordering to a network interface, and needs root.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<p>Lose 5% of what A sends, transfer the big file, and look at A's socket during the transfer:</p>
+<g-cmd m="A">
+$ sudo tc qdisc add dev eth0 root netem loss 5%
+</g-cmd>
+<g-cmd m="B">
+$ gosock recv :9000 big.copy
+</g-cmd>
+<g-cmd m="A">
+$ gosock send $B_IP:9000 /tmp/big.bin &
+$ ss -ti
+</g-cmd>
+<g-cmd m="B">
+$ sha256sum big.copy
+</g-cmd>
+<g-cmd m="A">
+$ sudo tc qdisc del dev eth0 root
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>The kernel view counts lost segments between A and B.</li>
+<li><code>ss -ti</code> shows <code>retrans:</code> and a small <code>cwnd</code>: the sender is recovering.</li>
+<li>The fingerprint on B is the original one.</li>
+</ul>
+</div>

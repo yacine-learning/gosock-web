@@ -143,7 +143,7 @@ test('non-blocking read gives EAGAIN; fcntl in strace; epoll reports a pending c
   assert.ok(r.ev2.some((e) => e.data === 5 && (e.events & 1))); assert.equal(r.data, 'hello from machine A\n');
   assert.ok(lines.some((l) => l === 'fcntl(3, F_GETFL) = 0x2 (flags O_RDWR)'), lines.join('\n'));
   assert.ok(lines.some((l) => l === 'fcntl(3, F_SETFL, O_RDWR|O_NONBLOCK) = 0'));
-  assert.ok(lines.some((l) => l === 'accept(3, ) = -1 EAGAIN (Resource temporarily unavailable)'), lines.join('\n'));
+  assert.ok(lines.some((l) => l === 'accept(3, 0x7ffd3c0e8650, [16]) = -1 EAGAIN (Resource temporarily unavailable)'), lines.join('\n'));
   assert.ok(lines.some((l) => /^epoll_wait\(4, \[\{events=EPOLLIN, data=\{u32=3, u64=3\}\}\], 4, 2000\) = 1$/.test(l)));
 });
 test('Nagle: small writes are held while data is unacknowledged, unless TCP_NODELAY', async () => {

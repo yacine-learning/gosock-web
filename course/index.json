@@ -44,6 +44,27 @@
   "once": {
    "bin": "once",
    "file": "03/once.go"
+  },
+  "slowrecv": {
+   "bin": "slowrecv",
+   "file": "04/slowrecv.go"
+  },
+  "chatty": {
+   "bin": "chatty",
+   "file": "04/chatty.go"
+  },
+  "peek": {
+   "bin": "peek",
+   "file": "04/peek.go"
+  },
+  "epollsrv": {
+   "bin": "epollsrv",
+   "file": "04/epollsrv.go"
+  },
+  "multi": {
+   "bin": "multi",
+   "file": "04/multi.go",
+   "solution": "04/multi.solution.go"
   }
  },
  "modules": [
@@ -249,6 +270,65 @@
      "title": "A bug on purpose: address already in use",
      "minutes": 8,
      "file": "reuse"
+    }
+   ]
+  },
+  {
+   "id": "m4",
+   "dir": "04",
+   "title": "Bytes in flight",
+   "blurb": "What happens between write and read: the window, small writes, lost segments, and waiting for many sockets at once.",
+   "items": [
+    {
+     "id": "check4",
+     "kind": "lesson",
+     "quiz": true,
+     "title": "Check: modules 1 to 3",
+     "minutes": 6,
+     "file": "check"
+    },
+    {
+     "id": "window",
+     "kind": "lesson",
+     "title": "A reader that does not read",
+     "minutes": 10,
+     "file": "window"
+    },
+    {
+     "id": "nagle",
+     "kind": "lesson",
+     "title": "Small writes and Nagle",
+     "minutes": 12,
+     "file": "nagle"
+    },
+    {
+     "id": "loss",
+     "kind": "lesson",
+     "title": "Lost segments",
+     "minutes": 10,
+     "file": "loss"
+    },
+    {
+     "id": "nonblock",
+     "kind": "lesson",
+     "title": "Not waiting: O_NONBLOCK",
+     "minutes": 8,
+     "file": "nonblock"
+    },
+    {
+     "id": "epoll",
+     "kind": "lesson",
+     "title": "Waiting for many: epoll",
+     "minutes": 12,
+     "file": "epoll"
+    },
+    {
+     "id": "multi",
+     "kind": "lab",
+     "title": "Several senders at once",
+     "minutes": 25,
+     "file": "multi",
+     "lab": "multi"
     }
    ]
   }

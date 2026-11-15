@@ -1,0 +1,53 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>Eight questions on modules 1 to 3, one at a time, no correction until the end; then your grade, the corrections and a recommendation.</li>
+<li>It is a check, not a gate.</li>
+</ul></div>
+
+<g-quiz id="m4" pass="75" about="modules 1 to 3">
+<g-qq correct="b"><g-q>A server called <code>listen</code> but never calls <code>accept</code>. A client calls <code>connect</code>. What happens?</g-q>
+  <g-o k="a"><code>connect</code> waits until the server calls <code>accept</code>.</g-o>
+  <g-o k="b"><code>connect</code> returns: the server's kernel completed the handshake, and the connection waits in the accept queue.</g-o>
+  <g-o k="c"><code>connect</code> fails with "connection refused".</g-o>
+  <g-o k="d">The client's kernel retries until <code>accept</code> is called.</g-o>
+  <g-why><p>After <code>listen</code> the kernel answers handshakes alone; <code>accept</code> only takes finished connections from the queue (while the queue has room).</p></g-why></g-qq>
+<g-qq correct="d"><g-q><code>ss -tln</code> shows a listening socket with Recv-Q 3 and Send-Q 2. What do the numbers mean?</g-q>
+  <g-o k="a">3 bytes received, 2 bytes to send.</g-o>
+  <g-o k="b">3 clients refused, 2 accepted.</g-o>
+  <g-o k="c">3 connections being handled by the program, 2 waiting.</g-o>
+  <g-o k="d">3 connections waiting in the accept queue; a backlog of 2.</g-o>
+  <g-why><p>For a listening socket, Recv-Q is the accept queue's length and Send-Q the backlog. Linux keeps up to backlog + 1.</p></g-why></g-qq>
+<g-qq correct="a"><g-q>Which side of a TCP connection ends in TIME_WAIT?</g-q>
+  <g-o k="a">The side that closed first.</g-o>
+  <g-o k="b">Always the server.</g-o>
+  <g-o k="c">Always the client.</g-o>
+  <g-o k="d">Both sides, for 60 seconds each.</g-o>
+  <g-why><p>The first FIN's sender keeps the connection 60 seconds in TIME_WAIT; the other side's socket disappears after its own FIN is acknowledged.</p></g-why></g-qq>
+<g-qq correct="c"><g-q>A program sets <code>SO_RCVBUF</code> to 4096 and reads it back with <code>getsockopt</code>. What does it get?</g-q>
+  <g-o k="a">4096</g-o><g-o k="b">2048</g-o><g-o k="c">8192</g-o><g-o k="d">131072</g-o>
+  <g-why><p>Linux doubles the request (room for its own bookkeeping) and reports the doubled value.</p></g-why></g-qq>
+<g-qq correct="b"><g-q>A raw-syscall server restarts right after serving clients, and <code>bind</code> fails with "address already in use". Nobody else listens on the port. Why?</g-q>
+  <g-o k="a">The old server process is still running.</g-o>
+  <g-o k="b">The server closed its connections first; they are in TIME_WAIT and hold the port, and the new socket has no <code>SO_REUSEADDR</code>.</g-o>
+  <g-o k="c">The port was given to a client as an ephemeral port.</g-o>
+  <g-o k="d">The kernel needs a minute to free any port after a program exits.</g-o>
+  <g-why><p>TIME_WAIT connections keep the port; <code>SO_REUSEADDR</code> on the new listening socket lets it bind next to them.</p></g-why></g-qq>
+<g-qq correct="a"><g-q>After one client, a server holds a listening socket and an accepted one. Which one carries the client's data?</g-q>
+  <g-o k="a">Only the accepted socket.</g-o>
+  <g-o k="b">Only the listening socket.</g-o>
+  <g-o k="c">Both, half each.</g-o>
+  <g-o k="d">The listening socket, until the program calls <code>read</code>.</g-o>
+  <g-why><p>The listening socket only produces connections; each accepted socket has its own buffers and state.</p></g-why></g-qq>
+<g-qq correct="d"><g-q>In <code>tcpdump</code>, <code>Flags [F.]</code> means…</g-q>
+  <g-o k="a">a failed segment, to be sent again.</g-o>
+  <g-o k="b">the first segment of the connection.</g-o>
+  <g-o k="c">a segment with data that must be delivered at once.</g-o>
+  <g-o k="d">a FIN (no more data from this side), with an acknowledgement.</g-o>
+  <g-why><p><code>F</code> is FIN, <code>.</code> is ACK. <code>S</code> is SYN, <code>P</code> push, <code>R</code> reset.</p></g-why></g-qq>
+<g-qq correct="c"><g-q>For a connected socket, <code>ss</code> shows Send-Q 87040. What is it?</g-q>
+  <g-o k="a">Bytes the program has asked to send but the kernel refused.</g-o>
+  <g-o k="b">Bytes received and not yet read.</g-o>
+  <g-o k="c">Bytes the program wrote that the peer has not acknowledged yet.</g-o>
+  <g-o k="d">The size of the send buffer.</g-o>
+  <g-why><p>Send-Q is data in the send buffer: written, and kept until the peer acknowledges it (in case it must be sent again).</p></g-why></g-qq>
+</g-quiz>

@@ -1,0 +1,45 @@
+<g-callout type="goal"><p>Write <code>multi</code>: a receiver that serves several senders at the same time, the Go way, with one goroutine per connection.</p></g-callout>
+
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li><code>go f(x)</code> runs <code>f</code> in a new goroutine and returns at once, so the accept loop can take the next connection while earlier ones are still being served.</li>
+<li>A <code>sync.WaitGroup</code> waits for them all: <code>wg.Add(1)</code> before each <code>go</code>, <code>defer wg.Done()</code> inside, <code>wg.Wait()</code> at the end.</li>
+<li>Underneath, on Linux, the Go runtime runs the epoll loop of the previous page for you.</li>
+</ul></div>
+
+<h2>The spec</h2>
+<table>
+<tr><th>Command</th><th>Behaviour</th></tr>
+<tr><td><code>multi PORT N</code></td><td>Listen on <code>PORT</code>, accept <code>N</code> connections, store connection <i>k</i> (in accept order, from 1) in <code>in-<i>k</i>.bin</code>, each served by its own goroutine. When one ends, print <code>k: received B bytes from ADDR</code>. Exit with status 0 when all <code>N</code> are done.</td></tr>
+<tr><td>Errors</td><td><code>serve</code>'s error is printed by <code>main</code> as <code>multi: …</code>, exit status 1.</td></tr>
+</table>
+
+<details class="fold more"><summary>Goroutines, in two lines</summary>
+<g-go>
+go handle(k, conn, name) // starts now, runs alongside; the loop continues at once
+wg.Wait()                // sleeps until every wg.Done() has been called
+</g-go>
+<p>Since Go 1.22 each loop iteration has its own <code>k</code> and <code>conn</code>, so a goroutine started in the loop keeps the values of its own iteration.</p>
+</details>
+
+<g-lab id="multi"></g-lab>
+
+<h2 class="run">Run this</h2>
+<g-cmd m="B">
+$ multi 9000 2
+</g-cmd>
+<g-cmd m="A">
+$ sleep 3 | nc -N $B_IP 9000 &
+$ gosock send $B_IP:9000 /tmp/big.bin
+</g-cmd>
+<g-cmd m="B">
+$ ls -l in-1.bin in-2.bin
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>"2: received 2097152 bytes" came first, while connection 1 was still open and silent.</li>
+<li>"1: received 0 bytes" 3 seconds later, then <code>multi</code> exited.</li>
+</ul>
+</div>

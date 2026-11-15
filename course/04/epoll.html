@@ -1,0 +1,53 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li><g-t k="epoll">epoll</g-t> waits for <b>many</b> descriptors at once: register each one with <code>epoll_ctl</code>, then <code>epoll_wait</code> sleeps until one or more are ready and returns that list.</li>
+<li>One thread, one loop: serve exactly the ready descriptors, never block on one. A slow client costs nothing while it is silent.</li>
+<li>This is how Nginx, Redis, Node.js and the Go runtime serve thousands of connections.</li>
+</ul></div>
+
+<details class="fold more"><summary>Ready, level-triggered, and the Go runtime</summary>
+<p>"Ready" means a call would not wait: a listener has a connection to accept, a socket has data (or the end) to read, or room to write. By default epoll is <b>level-triggered</b>: a descriptor is reported at every <code>epoll_wait</code> while it stays ready. With <code>EPOLLET</code> (edge-triggered, not modelled here) it is reported once per change, and the program must read until <code>EAGAIN</code>.</p>
+<p>The Go runtime's "netpoller" is such a loop. When a goroutine's <code>Read</code> finds no data, the runtime registers the socket, parks the goroutine, and runs others; when <code>epoll_wait</code> reports the socket, the goroutine is woken. You write simple blocking code; the runtime turns it into this.</p>
+</details>
+<details class="fold kc"><summary>epoll in simplified kernel C</summary>
+<g-go file="kernel (simplified).c">
+struct eventpoll {                 // one per epoll_create1(): another descriptor
+    struct rb_root   rbr;          // the registered descriptors (epoll_ctl)
+    struct list_head rdllist;      // the READY ones
+    wait_queue_head_t wq;          // processes sleeping in epoll_wait
+};
+
+// when data arrives on a socket, its wake-up callback runs:
+void ep_poll_callback(struct epitem *epi) {
+    list_add_tail(&epi->rdllink, &epi->ep->rdllist);   // now ready
+    wake_up(&epi->ep->wq);                             // wake epoll_wait
+}
+// epoll_wait copies rdllist to user space: the cost depends on how many are
+// READY, not on how many are registered. That is the whole trick.
+</g-go>
+</details>
+
+<h2 class="run">Run this</h2>
+<g-example project="epollsrv"><p><code>epollsrv</code> serves port 9000 with one epoll loop. Build it and start it on B, traced to a file:</p></g-example>
+<g-cmd m="B">
+$ strace -o ep.trace epollsrv &
+</g-cmd>
+<p>Client 1 connects and stays silent for 4 seconds; client 2 says hello meanwhile:</p>
+<g-cmd m="A">
+$ sleep 4 | nc -N $B_IP 9000 &
+$ echo hello | nc -N $B_IP 9000
+</g-cmd>
+<p>After 4 seconds, look at what the loop did:</p>
+<g-cmd m="B">
+$ grep -c epoll_wait ep.trace
+$ grep epoll_ctl ep.trace
+$ pkill epollsrv
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>Client 2 was served at once although client 1 was connected and silent: "[6] hello", "[6] closed", then "[5] closed" 4 seconds later. (3 is the listener, 4 the epoll instance itself.)</li>
+<li>One process, no thread per client: a few <code>epoll_wait</code> calls, one per burst of events.</li>
+</ul>
+</div>

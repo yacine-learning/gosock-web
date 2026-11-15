@@ -1,0 +1,48 @@
+<div class="know"><span class="k">What you should know</span>
+<ul>
+<li>Each <code>write</code> can become its own segment. 100 writes of 1 byte can cost 100 segments, each with 40 bytes of headers.</li>
+<li><g-t k="nagle">Nagle's algorithm</g-t>: while sent data is not yet acknowledged, small writes wait and are sent together. It is on by default in Linux.</li>
+<li><code>TCP_NODELAY</code> turns it off, for programs where every byte is urgent. <b>Go turns it off on every connection</b>; <code>SetNoDelay(false)</code> turns it back on.</li>
+</ul></div>
+
+<details class="fold more"><summary>When Nagle hurts</summary>
+<p>Nagle trades latency for fewer segments: a small write may wait up to a round trip. Combined with the receiver's "delayed ACK" (Linux waits up to 40 ms before acknowledging, hoping to piggyback the ACK on a reply), a request written in two small pieces can stall for 40 ms. Interactive protocols set <code>TCP_NODELAY</code>; Go's authors chose it as the default for everyone.</p>
+<p>The better fix is in the program: build the message in memory (or use a <code>bufio.Writer</code>) and write it once. These machines model Nagle but not delayed ACKs.</p>
+</details>
+
+<h2 class="run">Run this</h2>
+<g-example project="chatty"><p><code>chatty</code> sends 100 bytes in 100 writes. Build it. Give A's link a 20 ms delay (a round trip worth waiting for), and record B's segments to a file:</p></g-example>
+<g-cmd m="A">
+$ sudo tc qdisc add dev eth0 root netem delay 20ms
+</g-cmd>
+<g-cmd m="B">
+$ tcpdump -n port 9000 > d1.txt &
+$ nc -l 9000
+</g-cmd>
+<g-cmd m="A">
+$ chatty $B_IP:9000
+</g-cmd>
+<g-cmd m="B">
+$ pkill tcpdump
+$ grep -c 'length [1-9]' d1.txt
+$ tcpdump -n port 9000 > d2.txt &
+$ nc -l 9000
+</g-cmd>
+<g-cmd m="A">
+$ chatty -nagle $B_IP:9000
+</g-cmd>
+<g-cmd m="B">
+$ pkill tcpdump
+$ grep -c 'length [1-9]' d2.txt
+</g-cmd>
+<g-cmd m="A">
+$ sudo tc qdisc del dev eth0 root
+</g-cmd>
+
+<div class="notice">
+<h2>What you should notice</h2>
+<ul>
+<li>Go's default: 100 segments with data, one per write.</li>
+<li>With Nagle: a handful. The first byte left alone, the others waited for its ACK and travelled together.</li>
+</ul>
+</div>

@@ -211,6 +211,67 @@ const RAWRECV = [
   }],
 ];
 
+// lab: multi (module 4)
+// a sender as a helper process: connect, then send each part after its delay (ms), then close
+const sender = (h, m, port, parts) => {
+  const st = { connected: false, done: false };
+  const { res } = h.helper(m, async (sys) => { const s = await sys('socket', 2, 1, 6); await sys('connect', s, '10.0.0.2', port); st.connected = true; for (const [wait, data] of parts) { if (wait) await sleep(wait); if (data.length) await sys('write', s, data); } await sys('close', s); st.done = true; });
+  st.res = res; return st;
+};
+const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return true; await sleep(15); } return false; };
+const MULTI = [
+  ['A', 'one connection: stored in in-1.bin, and the line printed', async (h) => {
+    const pr = h.start(h.b, 'multi', '9100', '1');
+    if (!await h.listening(h.b, 9100, 3000, pr)) fail(`nothing listens on port 9100 three seconds after start. The program printed ${show(pr.all)}`);
+    const data = pattern(300001); await h.client(h.a, '10.0.0.2', 9100, data);
+    const r = await pr.wait(3000);
+    const got = h.b.readFile('/tmp/in-1.bin');
+    if (!got) fail(`in-1.bin was not created (in the directory the program runs in). It printed ${show(pr.all)}`);
+    if (!equal(got, data)) fail(`in-1.bin has ${got.length} bytes, ${data.length} were sent`);
+    if (!/^1: received 300001 bytes from 10\.0\.0\.1:\d+$/m.test(pr.stdout)) fail(`expected a line like "1: received 300001 bytes from 10.0.0.1:41952", got ${show(pr.stdout)}`);
+    if (r.timedOut || r.code !== 0) fail(`with N = 1 the program should exit with status 0 after that connection (${status(r)})`);
+  }],
+  ['B', 'a slow sender does not hold up a fast one', async (h) => {
+    const pr = h.start(h.b, 'multi', '9100', '2');
+    if (!await h.listening(h.b, 9100, 3000, pr)) fail(`nothing listens on port 9100. The program printed ${show(pr.all)}`);
+    const slow = sender(h, h.a, 9100, [[0, pattern(10)], [2500, pattern(10)]]);
+    await until(() => slow.connected, 1000); await sleep(100);
+    const fast = sender(h, h.a, 9100, [[0, pattern(100000)]]); await fast.res;
+    const ok = await until(() => /^2: received 100000 bytes/m.test(pr.stdout), 1500);
+    if (!ok) fail(`connection 2 sent 100000 bytes and closed, but no "2: received 100000 bytes" line came while connection 1 was still open. Is each connection served by its own goroutine (go handle(...))? It printed ${show(pr.all)}`);
+    if (slow.done) fail('the check went too slowly to tell (not your fault: run the checks again)');
+    await slow.res; await pr.wait(3000);
+  }],
+  ['C', 'waits for every connection, then exits with status 0', async (h) => {
+    const pr = h.start(h.b, 'multi', '9100', '2');
+    if (!await h.listening(h.b, 9100, 3000, pr)) fail('nothing listens on port 9100');
+    const slow = sender(h, h.a, 9100, [[0, pattern(5)], [1200, pattern(5)]]);
+    await until(() => slow.connected, 1000); await sleep(50);
+    await h.client(h.a, '10.0.0.2', 9100, pattern(10)); await sleep(300);
+    if (pr.p.dead) fail(`the program exited before connection 1 was finished (${show(pr.all)}): wait for every goroutine (wg.Wait()) before returning`);
+    await slow.res; const r = await pr.wait(3000);
+    if (r.timedOut) fail('the program is still running after both connections ended: does it stop after N connections, and do the handlers call wg.Done()?');
+    if (r.code !== 0) fail(`${status(r)}, expected 0 (it printed ${show(pr.stderr)})`);
+    const one = h.b.readFile('/tmp/in-1.bin');
+    if (!one || one.length !== 10) fail(`in-1.bin should hold the 10 bytes of connection 1, it holds ${one ? one.length : 0}`);
+  }],
+  ['D', 'three at once: every file complete, numbered in accept order', async (h) => {
+    const pr = h.start(h.b, 'multi', '9100', '3');
+    if (!await h.listening(h.b, 9100, 3000, pr)) fail('nothing listens on port 9100');
+    const datas = [pattern(70000), pattern(150000).map((x) => x ^ 1), pattern(30000).map((x) => x ^ 2)], senders = [];
+    for (const d of datas) { const s = sender(h, h.a, 9100, [[0, d.subarray(0, 1000)], [400, d.subarray(1000)]]); await until(() => s.connected, 1000); await sleep(30); senders.push(s); }
+    await Promise.all(senders.map((s) => s.res)); const r = await pr.wait(4000);
+    datas.forEach((d, i) => { const got = h.b.readFile(`/tmp/in-${i + 1}.bin`); if (!got || !equal(got, d)) fail(`in-${i + 1}.bin should hold the ${d.length} bytes of connection ${i + 1}, it holds ${got ? got.length : 0}${got && got.length === d.length ? ' different bytes' : ''}`); });
+    if (r.code !== 0) fail(`${status(r)}, expected 0`);
+  }],
+  ['E', 'fails cleanly when the port is taken', async (h) => {
+    h.sink(h.b, 9100); await h.listening(h.b, 9100, 1000);
+    const r = await h.run(h.b, 3000, 'multi', '9100', '2');
+    if (r.timedOut) fail("the program kept running although the port is taken: Listen's error must be returned");
+    if (r.code !== 1 || !r.stderr.includes('address already in use')) fail(`expected exit status 1 and "address already in use" on standard error, got ${status(r)} and ${show(r.stderr)}`);
+  }],
+];
+
 // lab: send
 const SEND = [
   ['A', 'sends every byte of the file', async (h) => {
@@ -298,6 +359,16 @@ export const LABS = {
     ],
     explain: '<p>Five calls make the server: <code>socket</code>, <code>setsockopt</code>, <code>bind</code>, <code>listen</code>, <code>accept</code>. Everything after <code>accept</code> is the file copy of rawcopy: a connected socket is read like any descriptor. <code>SO_REUSEADDR</code> is the line <code>net.Listen</code> adds for you, so that a restart never waits for old connections to leave TIME_WAIT.</p>',
     solution: ['func rawrecv(', '\n}\n'], solution2: ['func writeAll(', '\n}\n'],
+  },
+  multi: {
+    title: 'multi', project: 'multi', bin: 'multi', tests: MULTI,
+    hints: [
+      '<code>handle</code> is module 1\'s <code>recv</code> after <code>Accept</code>: <code>defer conn.Close()</code>, <code>f, err := os.Create(name)</code>, <code>defer f.Close()</code>, <code>n, err := io.Copy(f, conn)</code>, then the <code>fmt.Printf</code> line. Add <code>"io"</code> and <code>"sync"</code> to the imports.',
+      '<code>serve</code>: <code>ln, err := net.Listen("tcp", ":"+port)</code>, <code>defer ln.Close()</code>, <code>var wg sync.WaitGroup</code>, then <code>for k := 1; k &lt;= n; k++ { conn, err := ln.Accept(); … }</code>.',
+      'Inside the loop: <code>wg.Add(1)</code>, then <code>go func() { defer wg.Done(); if err := handle(k, conn, fmt.Sprintf("in-%d.bin", k)); err != nil { fmt.Fprintln(os.Stderr, "multi:", err) } }()</code>. After the loop: <code>wg.Wait()</code> and <code>return nil</code>.',
+    ],
+    explain: '<p>The accept loop never waits for a transfer: <code>go</code> hands each connection to a goroutine and the loop goes back to <code>Accept</code>. The <code>WaitGroup</code> counts the goroutines still running, so <code>serve</code> returns only when the last one is done. Each goroutine looks like blocking code (<code>io.Copy</code> sleeps in <code>Read</code>); on Linux the runtime turns those sleeps into one epoll loop, the one you saw run by hand.</p>',
+    solution: ['func handle(', '\n}\n'], solution2: ['func serve(', '\n}\n'],
   },
   send: {
     title: 'gosock send', project: 'gosock', tests: SEND,
