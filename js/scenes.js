@@ -618,7 +618,9 @@ customElements.define('g-anim', class extends HTMLElement {
       apply(cur);
       if (!animate) requestAnimationFrame(() => requestAnimationFrame(() => svg.classList.remove('noanim')));
       else svg.classList.remove('noanim');
-      cap.innerHTML = def.steps[cur].cap; cap.style.animation = 'none'; void cap.offsetWidth; cap.style.animation = '';
+      const items = cap.children;
+      for (let i = 0; i < items.length; i++) items[i].classList.toggle('on', i === cur);
+      const on = items[cur]; on.style.animation = 'none'; void on.offsetWidth; on.style.animation = '';
       no.textContent = `${cur + 1}/${N}`;
       prevBtn.disabled = cur === 0; nextBtn.disabled = cur === N - 1;
       dots.querySelectorAll('i').forEach((d, i) => d.className = i < cur ? 'past' : i === cur ? 'now' : '');
@@ -656,6 +658,9 @@ customElements.define('g-anim', class extends HTMLElement {
     this.setOpen = fold;
     this.disconnectedCallback = () => { stop(); if (this.classList.contains('full')) document.body.classList.remove('an-full-on'); };
     def.steps.forEach((s, i) => { if (!s.cap && i) s.cap = def.steps[i - 1].cap; });
+    // every caption sits in the same grid cell and only the current one is shown, so the box is as tall
+    // as the longest caption and the page below it never moves when the step changes
+    cap.innerHTML = def.steps.map(st => `<span class="cap-i">${st.cap}</span>`).join('');
     show(0, false); fold(openPref());
   }
 });

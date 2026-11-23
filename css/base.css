@@ -94,8 +94,10 @@ g-anim.full .an-cap { font-size: 1.1rem; }
 .an-stage svg { display: block; width: 100%; height: auto; max-height: 560px; overflow: visible; }
 .an-cap { display: flex; gap: 14px; align-items: flex-start; margin: 0 16px 14px; padding: 14px 18px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); min-height: 76px; }
 .an-cap .no { flex: none; font: 700 12px var(--mono); color: var(--accent); background: var(--accent-soft); padding: 4px 9px; border-radius: 8px; margin-top: 2px; }
-.an-cap .tx { color: var(--text-2); font-size: .98rem; line-height: 1.6; animation: viewIn .35s; }
-.an-cap .tx b { color: var(--text); } .an-cap .tx code { font: .88em var(--mono); background: var(--surface-3); padding: .1em .4em; border-radius: 6px; border: 1px solid var(--line); }
+.an-cap .tx { flex: 1; min-width: 0; display: grid; color: var(--text-2); font-size: .98rem; line-height: 1.6; }
+.an-cap .cap-i { grid-area: 1 / 1; visibility: hidden; }
+.an-cap .cap-i.on { visibility: visible; animation: viewIn .35s; }
+.an-cap .cap-i b { color: var(--text); } .an-cap .cap-i code { font: .88em var(--mono); background: var(--surface-3); padding: .1em .4em; border-radius: 6px; border: 1px solid var(--line); }
 .an-ctl { display: flex; align-items: center; gap: 10px; padding: 0 16px 16px; }
 .an-ctl button { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line-2); transition: .15s; color: var(--text); }
 .an-ctl button:hover { border-color: var(--accent); transform: translateY(-1px); }
