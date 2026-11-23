@@ -22,7 +22,7 @@ function P(id, x, y, txt, color = '', w = 0) {
   return `<g class="m pk ${color}" data-id="${id}"><rect x="${x}" y="${y}" width="${width}" height="26" rx="8"/><text data-id="${id}-t" x="${x + width / 2}" y="${y + 17}" text-anchor="middle" font-size="12">${txt}</text></g>`;
 }
 const L = (id, x1, y1, x2, y2, cls = 'arrow') => `<path class="m ${cls}" data-id="${id}" d="M${x1} ${y1} L${x2} ${y2}" marker-end="url(#ah)"/>`;
-const DEFS = `<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1.5L8.5 5L1 8.5z" fill="var(--muted)"/></marker></defs>`;
+const DEFS = `<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1.5L8.5 5L1 8.5z" fill="var(--accent)"/></marker></defs>`;
 const mv = (base, X, Y) => ({ x: X - base[0], y: Y - base[1] });
 
 export const SCENES = {};
@@ -560,7 +560,7 @@ export const SCENES = {};
       { cap: '50 MB is about 1 500 chunks, so it keeps going …', set: { ...reveal(10, 22), n1: { t: '2 200 calls …' } } },
       { cap: '… and ends at about <b>3 000 syscalls</b>: roughly 1 530 reads and 1 530 writes.', set: { ...reveal(22, 31), n1: { t: '3 058 calls' } } },
       { cap: '<code>cat</code> noticed that both ends are <b>files</b>. It asks the kernel to copy from one to the other with <code>copy_file_range</code>, and the kernel moves the whole file by itself: <b>2 calls</b>.', set: { thin: { o: 1 }, n2: { t: '2 calls' } } },
-      { cap: 'The lesson of module 1 again: when the kernel knows both ends, it can do the copy without your program in the middle. The file is identical either way. What changes is how often you cross into the kernel.', set: {} },
+      { cap: 'The lesson of module 1 again: when the kernel knows both ends, it can do the copy without your program in the middle. The file is identical either way. What changes is how often you cross into the kernel.', set: { n1: { t: '3 058 calls' }, n2: { t: '2 calls: the same file' } } },
     ],
   };
 }
@@ -589,7 +589,7 @@ customElements.define('g-anim', class extends HTMLElement {
         <button data-a="replay" aria-label="Restart">${ICON.replay}</button>
         <div class="an-dots"></div>
       </div></div>`;
-    const svg = this.querySelector('svg'), cap = this.querySelector('.tx'), no = this.querySelector('.no'), dots = this.querySelector('.an-dots');
+    const svg = this.querySelector('svg.sc'), cap = this.querySelector('.tx'), no = this.querySelector('.no'), dots = this.querySelector('.an-dots');
     const playBtn = this.querySelector('.play'), prevBtn = this.querySelector('[data-a="prev"]'), nextBtn = this.querySelector('[data-a="next"]');
     let cur = -1, timer = null;
     svg.querySelectorAll('[data-id]').forEach(el => { el.dataset.base = el.getAttribute('class') || ''; });

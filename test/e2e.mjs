@@ -33,6 +33,25 @@ test('every page loads without errors and its run buttons exist', async () => {
   }
   await open('#/glossary'); await open('#/'); await shot('home');
 });
+test('animations really animate: every step of every scene changes what is drawn', async () => {
+  await open('#/p/cache');
+  const report = await page.evaluate(async () => {
+    const { SCENES } = await import('/js/scenes.js'); const bad = [];
+    for (const name of Object.keys(SCENES)) {
+      const g = document.createElement('g-anim'); g.setAttribute('scene', name); document.body.append(g); g.setOpen(true);
+      const snap = () => [...g.querySelectorAll('svg.sc [data-id]')].map((e) => (e.getAttribute('style') || '') + '|' + (e.getAttribute('class') || '') + '|' + e.textContent).join('\n');
+      let before = snap();
+      for (let i = 1; i < SCENES[name].steps.length; i++) {
+        g.querySelector('[data-a="next"]').click(); const now = snap();
+        if (now === before) bad.push(`${name} step ${i + 1}`);
+        before = now;
+      }
+      g.remove();
+    }
+    return bad;
+  });
+  assert.deepEqual(report, [], 'steps that change nothing on the drawing');
+});
 test('page "nc": the commands of the page, clicked in order', async () => {
   await open('#/p/nc');
   const click = async (n) => { await page.locator('.cmd-run').nth(n).click(); };
