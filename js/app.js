@@ -9,6 +9,7 @@ import { toolchain } from './toolchain.js';
 import { goProgram } from './gorun.js';
 import { LABS, runLab } from './checks.js';
 import { ICON, esc } from './ui.js';
+import { CHANGELOG, VERSION } from './version.js';
 import './components.js';
 
 const $ = (s) => document.querySelector(s);
@@ -149,7 +150,7 @@ function side() {
     S.index.modules.map((m, i) => `<div class="mod">${String(i + 1).padStart(2, '0')} · ${esc(m.title)}</div>` + m.items.map((it) =>
       `<a class="item ${S.store.done[it.id] ? 'done' : ''} ${S.page === it.id ? 'on' : ''}" href="#/p/${it.id}"><span class="dot">${S.store.done[it.id] ? '✓' : ''}</span>${esc(it.title)}<span class="min">${it.minutes} min</span></a>`).join('')).join('') +
     `<div class="mod">Reference</div><a class="item ${S.page === 'glossary' ? 'on' : ''}" href="#/glossary"><span class="dot"></span>Glossary</a>
-     <div class="foot">Progress and code are saved in this browser only.<br>Go ${esc(S.index.go)} compiler, running in your browser.</div>`;
+     <div class="foot">Progress and code are saved in this browser only.<br>Go ${esc(S.index.go)} compiler, running in your browser.<br>Site version v${VERSION}</div>`;
 }
 const drawer = (open) => { $('#side').classList.toggle('open', open); $('#scrim').classList.toggle('open', open); };
 $('#menu').addEventListener('click', () => drawer(true)); $('#scrim').addEventListener('click', () => drawer(false));
@@ -234,6 +235,14 @@ $('#noteBtn').addEventListener('click', () => {
   // a command run from the course needs the machines on screen
   const run = S.run; S.run = (m, cmd) => { if (app.classList.contains('focus-page')) setFocus(null); return run(m, cmd); };
 }
+
+// ── version and what changed ──
+$('#ver').textContent = 'v' + VERSION;
+$('#ver').addEventListener('click', () => {
+  const m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = `<div class="box"><h3>What's new</h3><div class="cl">${CHANGELOG.map((r) => `<h4>v${r.v}<span>${r.date}</span></h4><ul>${r.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`).join('')}</div><div class="row"><button class="btn sm" data-a="close">Close</button></div></div>`;
+  document.body.append(m); m.addEventListener('click', (e) => { if (e.target === m || e.target.dataset.a === 'close') m.remove(); });
+});
 
 // ── theme ──
 {
